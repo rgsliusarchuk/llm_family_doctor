@@ -21,6 +21,35 @@ load_dotenv()
 
 from src.config import settings
 
+# ── Index validation and building ───────────────────────────────────────────
+def ensure_index_exists():
+    """Check if index exists, build if missing."""
+    index_path = Path(settings.index_path)
+    map_path = Path(settings.map_path)
+    protocols_dir = Path("data/protocols")
+    
+    if not index_path.exists() or not map_path.exists():
+        st.info("🔍 Індекс не знайдено. Перевіряємо наявність протоколів...")
+        
+        if not protocols_dir.exists() or not list(protocols_dir.glob("*.md")):
+            st.error("❌ Не знайдено протоколів для індексування. Будь ласка, запустіть `python scripts/ingest_protocol.py` спочатку.")
+            st.stop()
+        
+        st.info("🔨 Будуємо індекс... Це може зайняти кілька хвилин.")
+        
+        try:
+            from src.indexing.build_index import build_index
+            build_index(settings.model_id)
+            st.success("✅ Індекс успішно створено!")
+        except Exception as e:
+            st.error(f"❌ Помилка створення індексу: {e}")
+            st.stop()
+
+# ── Initialize index on startup ─────────────────────────────────────────────
+if 'index_checked' not in st.session_state:
+    ensure_index_exists()
+    st.session_state.index_checked = True
+
 # ── local modules ──────────────────────────────────────────────────────────
 # Try to use LangChain components first, fallback to original if not available
 try:

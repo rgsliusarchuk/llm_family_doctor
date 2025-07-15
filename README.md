@@ -21,8 +21,8 @@ Single-repo for data-prep **and** Streamlit UI.
 conda create -n familydoc python=3.11 -y         # or any ≥3.9
 conda activate familydoc
 
-# Setup environment and install dependencies
-python scripts/setup_environment.py
+# Install dependencies
+pip install -r requirements.txt
 
 # Copy environment template and add your API keys
 cp env.template .env          # then open .env and paste your keys
@@ -30,10 +30,9 @@ cp env.template .env          # then open .env and paste your keys
 # Add PDF files to data/raw_pdfs/
 # Then run the data preparation pipeline:
 python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive
-python src/indexing/build_index.py
 
-# Test the index
-python tests/test_index.py
+# Start the app (it will build the index automatically on first run)
+streamlit run app.py
 ```
 
 ## 📊 Data Preparation Pipeline
@@ -52,15 +51,21 @@ python scripts/ingest_protocol.py --dir data/raw_pdfs
 python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive
 ```
 
-### 2. Build Vector Index
-Create FAISS index from markdown protocols:
+### 2. Start the App
+The app automatically builds the index on first run:
 
 ```bash
-python src/indexing/build_index.py --hf-model intfloat/multilingual-e5-base
+streamlit run app.py
 ```
 
-### 3. Test the Index
-Comprehensive testing of the vector database:
+**Note**: The app will automatically:
+- Check if protocols exist
+- Build the FAISS index if missing
+- Show progress messages during index building
+- Handle all setup automatically
+
+### 3. Test the Index (Optional)
+For comprehensive testing of the vector database:
 
 ```bash
 python tests/test_index.py
@@ -91,6 +96,23 @@ The system includes pre-configured test queries for common medical conditions:
 - гіпертонія артеріальний тиск
 - діабет цукровий діабет
 - And many more...
+
+## 🤖 Automatic Index Building
+
+The Streamlit app automatically handles index building on first startup:
+
+- ✅ **No manual setup required** - Just run `streamlit run app.py`
+- ✅ **Progress feedback** - Shows building status with user-friendly messages
+- ✅ **Error handling** - Clear error messages if something goes wrong
+- ✅ **One-time only** - Index is built once and reused on subsequent runs
+- ✅ **Protocol validation** - Checks if protocols exist before building
+
+### How it works:
+1. App checks if `data/faiss_index` and `data/doc_map.pkl` exist
+2. If missing, validates that `data/protocols/*.md` files are present
+3. Downloads the embedding model and builds the index
+4. Shows progress messages during the process
+5. Saves the index for future use
 
 ## 🚀 LangChain & LangSmith Integration
 
@@ -126,20 +148,18 @@ This project now supports **LangChain** and **LangSmith** for enhanced RAG capab
 
 ```
 llm_family_doctor/
-├── app.py                          # Streamlit application
+├── app.py                          # Streamlit application (handles index building)
 ├── requirements.txt                # Python dependencies
 ├── env.template                    # Environment variables template
 ├── data/
 │   ├── raw_pdfs/                  # Input PDF files
 │   ├── protocols/                 # Converted markdown files
-│   ├── faiss_index               # FAISS vector index
-│   └── doc_map.pkl               # Document mapping
+│   ├── faiss_index               # FAISS vector index (auto-built)
+│   └── doc_map.pkl               # Document mapping (auto-built)
 ├── notebooks/
 │   └── data_prep.ipynb           # Enhanced notebook with testing
 ├── scripts/
-│   ├── ingest_protocol.py        # PDF to markdown converter
-│   ├── setup_environment.py      # Environment setup script
-│   └── build_index.py            # Index building script
+│   └── ingest_protocol.py        # PDF to markdown converter
 ├── src/
 │   ├── config/                   # Configuration settings
 │   ├── indexing/                 # Index building utilities
@@ -153,25 +173,20 @@ llm_family_doctor/
 
 ## 🔧 Environment Setup
 
-### Automatic Setup
 ```bash
-python scripts/setup_environment.py
-```
-
-### Manual Setup
-```bash
-# Create conda environment
+# Create conda environment (optional but recommended)
 conda create -n familydoc python=3.11 -y
 conda activate familydoc
 
 # Install dependencies
 pip install -r requirements.txt
 
-# Create necessary directories
-mkdir -p data/raw_pdfs data/protocols logs tests
-
-# Copy environment template
+# Copy environment template and add your API keys
 cp env.template .env
+# Edit .env file with your OpenAI API key
+
+# Create data directories (optional - app will create them if needed)
+mkdir -p data/raw_pdfs data/protocols logs
 ```
 
 ## 🎯 Usage Examples
@@ -179,9 +194,8 @@ cp env.template .env
 ### Basic Workflow
 1. **Add PDFs**: Place clinical protocol PDFs in `data/raw_pdfs/`
 2. **Convert**: Run `python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive`
-3. **Index**: Run `python src/indexing/build_index.py`
-4. **Test**: Run `python tests/test_index.py`
-5. **Use**: Start the Streamlit app with `streamlit run app.py`
+3. **Start App**: Run `streamlit run app.py` (index builds automatically on first run)
+4. **Test** (Optional): Run `python tests/test_index.py` for comprehensive testing
 
 ### Advanced Testing
 ```bash
@@ -198,10 +212,10 @@ python tests/test_langchain_integration.py
 ## 🐛 Troubleshooting
 
 ### Common Issues
-1. **Missing dependencies**: Run `python scripts/setup_environment.py`
-2. **Index not found**: Ensure you've run the indexing pipeline
+1. **Missing dependencies**: Run `pip install -r requirements.txt`
+2. **Index not found**: The app builds the index automatically on first run
 3. **Low search quality**: Check if your PDFs contain relevant medical content
-4. **Memory issues**: Use smaller batch sizes in `build_index.py`
+4. **Memory issues**: Use smaller batch sizes in `src/indexing/build_index.py`
 
 ### Debug Tools
 - `tests/debug_vector_store.py` - Diagnose index issues
