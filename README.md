@@ -2,11 +2,11 @@
 
 Single-repo for data-prep **and** Streamlit UI.
 
-* **data-prep** → `notebooks/data_prep_enhanced.ipynb` (Google Colab badge below)
+* **data-prep** → `notebooks/data_prep.ipynb` (Google Colab badge below)
 * **app**      → `app.py` (run locally or on Streamlit Cloud)
 * **testing**  → `tests/test_index.py` (comprehensive index testing)
 
-[![Run data prep in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsliusarchuk/llm-family-doctor/blob/main/notebooks/data_prep_enhanced.ipynb)
+[![Run data prep in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rsliusarchuk/llm-family-doctor/blob/main/notebooks/data_prep.ipynb)
 
 ## 🚀 Quick Start
 
@@ -77,7 +77,7 @@ The `tests/test_index.py` script provides:
 - 📈 Performance metrics
 
 ### Manual Testing in Notebook
-Use the enhanced notebook `notebooks/data_prep_enhanced.ipynb` for:
+Use the enhanced notebook `notebooks/data_prep.ipynb` for:
 - Interactive data exploration
 - Query testing with various medical terms
 - Index statistics and visualization
@@ -135,8 +135,7 @@ llm_family_doctor/
 │   ├── faiss_index               # FAISS vector index
 │   └── doc_map.pkl               # Document mapping
 ├── notebooks/
-│   ├── data_prep.ipynb           # Original notebook
-│   └── data_prep_enhanced.ipynb  # Enhanced notebook with testing
+│   └── data_prep.ipynb           # Enhanced notebook with testing
 ├── scripts/
 │   ├── ingest_protocol.py        # PDF to markdown converter
 │   ├── setup_environment.py      # Environment setup script
