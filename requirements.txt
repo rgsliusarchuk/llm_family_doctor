@@ -5,3 +5,7 @@ sentence-transformers
 faiss-cpu
 numpy
 pydantic-settings
+python-dotenv
+langchain>=0.1.0
+langchain-openai>=0.1.0
+langsmith>=0.1.0

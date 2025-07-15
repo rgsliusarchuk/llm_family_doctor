@@ -1,3 +1,7 @@
+import os
+# Disable tokenizers parallelism to avoid warnings in multiprocessing
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import faiss, pickle, numpy as np
 from sentence_transformers import SentenceTransformer
 from src.config import settings

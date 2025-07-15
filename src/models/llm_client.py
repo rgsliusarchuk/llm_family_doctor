@@ -14,6 +14,9 @@ Configuration is read from `.env` through `src.config.settings`:
 from __future__ import annotations
 
 import os
+# Disable tokenizers parallelism to avoid warnings in multiprocessing
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
 import textwrap
 from typing import List, Sequence
 
@@ -23,6 +26,7 @@ from openai import OpenAI
 from sentence_transformers import SentenceTransformer
 
 from src.config import settings
+from src.models.prompts import FAMILY_DOCTOR_SYSTEM_MESSAGE, build_legacy_prompt
 
 # ─────────────────────────── Environment ────────────────────────────────────
 load_dotenv()  # loads KEY=value pairs from .env (repo root)
@@ -76,11 +80,7 @@ def _openai_chat(prompt: str) -> str:
         messages=[
             {
                 "role": "system",
-                "content": (
-                    "You are an assistant for Ukrainian family doctors. "
-                    "Use *only* the supplied clinical guidelines, write in Ukrainian, "
-                    "and structure your answer clearly."
-                ),
+                "content": FAMILY_DOCTOR_SYSTEM_MESSAGE,
             },
             {"role": "user", "content": prompt},
         ],
@@ -92,22 +92,7 @@ def _openai_chat(prompt: str) -> str:
 
 def generate_response(user_query: str, context: str) -> str:
     """Build the RAG prompt and return the assistant's answer."""
-    prompt = textwrap.dedent(
-        f"""
-        ### Симптоми пацієнта
-        {user_query}
-
-        ### Доступні клінічні протоколи
-        {context}
-
-        ### Завдання
-        1. Вкажи *ймовірний діагноз*.
-        2. Сформулюй *план лікування* (нумерований список).
-        3. Якщо даних замало, перерахуй потрібні обстеження.
-        Відповідай українською, не вигадуй фактів поза контекстом.
-        """
-    ).strip()
-
+    prompt = build_legacy_prompt(user_query, context)
     return _openai_chat(prompt)
 
 # ───────────────────────── Module self-test ─────────────────────────────────

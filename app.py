@@ -17,9 +17,15 @@ load_dotenv()
 
 from src.config import settings
 
-# ── локальні модулі ──────────────────────────────────────────────────────────
-from src.models.vector_store import search            # FAISS → snippets
-from src.models.llm_client    import generate_response  # LLM-план
+# ── local modules ──────────────────────────────────────────────────────────
+# Try to use LangChain components first, fallback to original if not available
+try:
+    from src.models.rag_chain import generate_rag_response
+    USE_LANGCHAIN = True
+except ImportError:
+    from src.models.vector_store import search
+    from src.models.llm_client import generate_response
+    USE_LANGCHAIN = False
 
 # ── Streamlit базова конфігурація ────────────────────────────────────────────
 st.set_page_config(page_title="LLM-асистент", page_icon="🩺")
@@ -31,6 +37,9 @@ with st.sidebar:
     st.write(f"**Embedding-модель:** `{settings.model_id}`")
     st.write(f"**Індекс:** `{settings.index_path}`")
     st.write(f"**Doc-map:** `{settings.map_path}`")
+    st.write(f"**LangChain:** {'✅ Enabled' if USE_LANGCHAIN else '❌ Disabled'}")
+    if hasattr(settings, 'langsmith_project'):
+        st.write(f"**LangSmith:** `{settings.langsmith_project}`")
 
 # ── поле введення симптомів ──────────────────────────────────────────────────
 symptoms = st.text_area(
@@ -44,25 +53,42 @@ if st.button("Згенерувати попередній діагноз", type=
         st.warning("Будь ласка, введіть симптоми.")
         st.stop()
 
-    # 1) пошук протоколів
-    retrieved = search(symptoms, top_k=3)
-    if not retrieved:
-        st.error("Не знайдено релевантних протоколів.")
-        st.stop()
+    if USE_LANGCHAIN:
+        # Use LangChain RAG pipeline
+        with st.spinner("Генеруємо відповідь (LangChain)…"):
+            result = generate_rag_response(symptoms, top_k=3)
+            answer = result["response"]
+            retrieved_docs = result["documents"]
+    else:
+        # Fallback to original implementation
+        retrieved = search(symptoms, top_k=3)
+        if not retrieved:
+            st.error("Не знайдено релевантних протоколів.")
+            st.stop()
 
-    context = "\n\n".join(snippet for _, snippet in retrieved)
+        context = "\n\n".join(snippet for _, snippet in retrieved)
 
-    # 2) виклик LLM
-    with st.spinner("Генеруємо відповідь…"):
-        answer = generate_response(symptoms, context)
+        with st.spinner("Генеруємо відповідь…"):
+            answer = generate_response(symptoms, context)
+        
+        # Convert to document format for consistency
+        retrieved_docs = []
+        for score, snippet in retrieved:
+            from langchain.schema import Document
+            doc = Document(
+                page_content=snippet,
+                metadata={"similarity_score": score}
+            )
+            retrieved_docs.append(doc)
 
     # 3) відображення
     st.markdown("## Попередній діагноз і план лікування")
     st.markdown(answer)
 
     with st.expander("Показати використані протоколи"):
-        for score, snippet in retrieved:
-            st.markdown(f"**Схожість {score:.3f}**  \n{snippet}\n\n---")
+        for i, doc in enumerate(retrieved_docs, 1):
+            score = doc.metadata.get("similarity_score", 0.0)
+            st.markdown(f"**Протокол {i}** (схожість: {score:.3f})  \n{doc.page_content}\n\n---")
 
     # ── цикл схвалення лікарем ───────────────────────────────────────────────
     col1, col2, col3 = st.columns(3)

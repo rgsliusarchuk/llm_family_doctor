@@ -6,6 +6,11 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     openai_model: str = Field("gpt-4o-mini", env="OPENAI_MODEL")
     
+    # LangSmith configuration
+    langsmith_api_key: str = Field("", env="LANGSMITH_API_KEY")
+    langsmith_project: str = Field("llm-family-doctor", env="LANGSMITH_PROJECT")
+    langsmith_endpoint: str = Field("https://api.smith.langchain.com", env="LANGSMITH_ENDPOINT")
+    
     # model & vector-store paths
     model_id: str = Field("intfloat/multilingual-e5-base", env="MODEL_ID")
     index_path: str = Field("data/faiss_index",              env="INDEX_PATH")
