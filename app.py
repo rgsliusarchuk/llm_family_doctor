@@ -119,12 +119,19 @@ if st.button("Згенерувати попередній діагноз", type=
             )
             retrieved_docs.append(doc)
 
-    # 3) відображення
+    # Store results in session state
+    st.session_state.current_answer = answer
+    st.session_state.current_symptoms = symptoms
+    st.session_state.current_docs = retrieved_docs
+    st.session_state.show_results = True
+
+# ── відображення результатів ────────────────────────────────────────────────
+if st.session_state.get('show_results', False):
     st.markdown("## Попередній діагноз і план лікування")
-    st.markdown(answer)
+    st.markdown(st.session_state.current_answer)
 
     with st.expander("Показати використані протоколи"):
-        for i, doc in enumerate(retrieved_docs, 1):
+        for i, doc in enumerate(st.session_state.current_docs, 1):
             score = doc.metadata.get("similarity_score", 0.0)
             st.markdown(f"**Протокол {i}** (схожість: {score:.3f})  \n{doc.page_content}\n\n---")
 
@@ -137,7 +144,7 @@ if st.button("Згенерувати попередній діагноз", type=
         try:
             with feedback_log.open("a", newline="", encoding="utf-8") as f:
                 csv.writer(f).writerow(
-                    [dt.datetime.now().isoformat(), symptoms, status, edited or answer]
+                    [dt.datetime.now().isoformat(), st.session_state.current_symptoms, status, edited or st.session_state.current_answer]
                 )
             return True
         except Exception as e:
@@ -149,34 +156,16 @@ if st.button("Згенерувати попередній діагноз", type=
         st.session_state.feedback_status = None
         st.session_state.feedback_message = ""
 
-    # Show previous feedback message if exists
-    if st.session_state.feedback_status:
-        if st.session_state.feedback_status == "approved":
-            st.success(st.session_state.feedback_message)
-        elif st.session_state.feedback_status == "rejected":
-            st.warning(st.session_state.feedback_message)
-        elif st.session_state.feedback_status == "edited":
-            st.success(st.session_state.feedback_message)
-        
-        # Show where feedback is saved
-        st.info(f"📝 Відгук збережено в: `{feedback_log.absolute()}`")
-
     with col1:
         if st.button("Схвалити", key="approve_btn"):
             if log_feedback("approved"):
-                st.session_state.feedback_status = "approved"
-                st.session_state.feedback_message = "Відповідь схвалено та збережено."
                 st.rerun()
     with col2:
         if st.button("Відхилити", key="reject_btn"):
             if log_feedback("rejected"):
-                st.session_state.feedback_status = "rejected"
-                st.session_state.feedback_message = "Відповідь відхилено та збережено."
                 st.rerun()
     with col3:
-        edited = st.text_area("✏️ Відредагуйте перед збереженням:", value=answer, key="edit_area")
+        edited = st.text_area("✏️ Відредагуйте перед збереженням:", value=st.session_state.current_answer, key="edit_area")
         if st.button("Зберегти редаговане", key="save_edited_btn"):
             if log_feedback("edited", edited):
-                st.session_state.feedback_status = "edited"
-                st.session_state.feedback_message = "Редаговану відповідь збережено."
                 st.rerun()
