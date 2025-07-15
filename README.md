@@ -16,6 +16,20 @@ Ingest files:
 
 ```python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive```
 
+# From the repo root (`llm_family_doctor/`)
+conda create -n familydoc python=3.11 -y         # or any ≥3.9
+conda activate familydoc
+
+pip install -r requirements.txt
+
+cp env.template .env          # then open .env and paste your key
+
+# all PDFs in the default folder (non-recursive)
+python scripts/ingest_protocol.py --dir data/raw_pdfs
+
+# if they’re nested in sub-folders
+python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive
+
 
 
 

@@ -52,8 +52,26 @@ def pdf_to_markdown(pdf_path: Path, out_dir: Path = OUT_DIR) -> Path:
 
     # ── derive title and slug ────────────────────────────────────────────────
     first_line = next((ln.strip() for ln in raw_text.splitlines() if ln.strip()), "untitled protocol")
+    
+    # Transliterate Cyrillic to Latin
+    cyrillic_to_latin = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+        'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+        'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts',
+        'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
+        'я': 'ya',
+        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh',
+        'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O',
+        'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'H', 'Ц': 'Ts',
+        'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu',
+        'Я': 'Ya'
+    }
+    
+    # Transliterate the first line
+    transliterated = ''.join(cyrillic_to_latin.get(char, char) for char in first_line)
+    
     slug = (
-        re.sub(r"[^a-zA-Zа-яА-Я0-9]+", "_", first_line)
+        re.sub(r"[^a-zA-Z0-9]+", "_", transliterated)
         .strip("_")
         .lower()[:60]
     )
@@ -74,7 +92,12 @@ def ingest_path(target: Path, recursive: bool = False):
             return
         try:
             out_md = pdf_to_markdown(target)
-            print(f"✔️  {target.name} → {out_md.relative_to(Path.cwd())}")
+            try:
+                relative_path = out_md.relative_to(Path.cwd())
+                print(f"✔️  {target.name} → {relative_path}")
+            except ValueError:
+                # If paths don't share common parent, just show the filename
+                print(f"✔️  {target.name} → {out_md.name}")
         except Exception as e:
             sys.stderr.write(f"⚠️  {target}: {e}\n")
     elif target.is_dir():
