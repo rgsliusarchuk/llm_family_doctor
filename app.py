@@ -82,6 +82,11 @@ symptoms = st.text_area(
 
 # ── кнопка генерації ─────────────────────────────────────────────────────────
 if st.button("Згенерувати попередній діагноз", type="primary"):
+    # Clear previous feedback when generating new diagnosis
+    if 'feedback_status' in st.session_state:
+        st.session_state.feedback_status = None
+        st.session_state.feedback_message = ""
+    
     if not symptoms.strip():
         st.warning("Будь ласка, введіть симптоми.")
         st.stop()
@@ -129,21 +134,49 @@ if st.button("Згенерувати попередній діагноз", type=
     feedback_log.parent.mkdir(parents=True, exist_ok=True)
 
     def log_feedback(status: str, edited: str | None = None):
-        with feedback_log.open("a", newline="", encoding="utf-8") as f:
-            csv.writer(f).writerow(
-                [dt.datetime.now().isoformat(), symptoms, status, edited or answer]
-            )
+        try:
+            with feedback_log.open("a", newline="", encoding="utf-8") as f:
+                csv.writer(f).writerow(
+                    [dt.datetime.now().isoformat(), symptoms, status, edited or answer]
+                )
+            return True
+        except Exception as e:
+            st.error(f"Помилка збереження відгуку: {e}")
+            return False
+
+    # Initialize feedback state if not exists
+    if 'feedback_status' not in st.session_state:
+        st.session_state.feedback_status = None
+        st.session_state.feedback_message = ""
+
+    # Show previous feedback message if exists
+    if st.session_state.feedback_status:
+        if st.session_state.feedback_status == "approved":
+            st.success(st.session_state.feedback_message)
+        elif st.session_state.feedback_status == "rejected":
+            st.warning(st.session_state.feedback_message)
+        elif st.session_state.feedback_status == "edited":
+            st.success(st.session_state.feedback_message)
+        
+        # Show where feedback is saved
+        st.info(f"📝 Відгук збережено в: `{feedback_log.absolute()}`")
 
     with col1:
-        if st.button("Схвалити"):
-            log_feedback("approved")
-            st.success("Відповідь схвалено та збережено.")
+        if st.button("Схвалити", key="approve_btn"):
+            if log_feedback("approved"):
+                st.session_state.feedback_status = "approved"
+                st.session_state.feedback_message = "Відповідь схвалено та збережено."
+                st.rerun()
     with col2:
-        if st.button("Відхилити"):
-            log_feedback("rejected")
-            st.warning("Відповідь відхилено та збережено.")
+        if st.button("Відхилити", key="reject_btn"):
+            if log_feedback("rejected"):
+                st.session_state.feedback_status = "rejected"
+                st.session_state.feedback_message = "Відповідь відхилено та збережено."
+                st.rerun()
     with col3:
-        edited = st.text_area("✏️ Відредагуйте перед збереженням:", value=answer)
-        if st.button("Зберегти редаговане"):
-            log_feedback("edited", edited)
-            st.success("Редаговану відповідь збережено.")
+        edited = st.text_area("✏️ Відредагуйте перед збереженням:", value=answer, key="edit_area")
+        if st.button("Зберегти редаговане", key="save_edited_btn"):
+            if log_feedback("edited", edited):
+                st.session_state.feedback_status = "edited"
+                st.session_state.feedback_message = "Редаговану відповідь збережено."
+                st.rerun()
