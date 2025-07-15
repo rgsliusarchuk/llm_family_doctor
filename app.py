@@ -3,7 +3,11 @@
 from __future__ import annotations
 import csv
 import datetime as dt
+import os
 from pathlib import Path
+
+# Disable tokenizers parallelism to avoid warnings in multiprocessing
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import streamlit as st
 from dotenv import load_dotenv

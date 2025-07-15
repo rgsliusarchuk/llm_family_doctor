@@ -11,8 +11,12 @@ USAGE
 from __future__ import annotations
 
 import argparse, pickle
+import os
 from pathlib import Path
 from typing import Sequence
+
+# Disable tokenizers parallelism to avoid warnings in multiprocessing
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 import faiss, numpy as np
 from sentence_transformers import SentenceTransformer

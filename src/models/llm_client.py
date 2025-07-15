@@ -34,15 +34,29 @@ if not OPENAI_API_KEY:
 
 # ────────────────────────── Embedding model ─────────────────────────────────
 _EMBED_MODEL_ID = settings.model_id
-_embed_model = SentenceTransformer(_EMBED_MODEL_ID)
-EMBED_DIM = _embed_model.get_sentence_embedding_dimension()
+_embed_model = None
+
+def _get_embed_model():
+    """Get or create the SentenceTransformer model."""
+    global _embed_model
+    if _embed_model is None:
+        _embed_model = SentenceTransformer(_EMBED_MODEL_ID)
+    return _embed_model
+
+def _get_embed_dim():
+    """Get the embedding dimension."""
+    model = _get_embed_model()
+    return model.get_sentence_embedding_dimension()
+
+EMBED_DIM = _get_embed_dim()
 
 
 def embedder(text: str | Sequence[str]) -> np.ndarray:
     """Return 1-D or 2-D float32 unit-normalised embedding(s)."""
+    model = _get_embed_model()
     single = isinstance(text, str)
     texts: List[str] = [text] if single else list(text)
-    vecs = _embed_model.encode(
+    vecs = model.encode(
         texts,
         normalize_embeddings=True,  # inner-product == cosine
         show_progress_bar=False,
