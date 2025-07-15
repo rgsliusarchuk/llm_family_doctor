@@ -26,8 +26,14 @@ import re
 import sys
 from pathlib import Path
 
+# Add the project root to Python path so we can import from src
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
 import pdfplumber
 from tqdm import tqdm
+
+from src.utils.transliteration import transliterate_ukrainian
 
 # ---------- config -----------------------------------------------------------
 RAW_DIR = Path("data/raw_pdfs")      # default source
@@ -53,22 +59,8 @@ def pdf_to_markdown(pdf_path: Path, out_dir: Path = OUT_DIR) -> Path:
     # ── derive title and slug ────────────────────────────────────────────────
     first_line = next((ln.strip() for ln in raw_text.splitlines() if ln.strip()), "untitled protocol")
     
-    # Transliterate Cyrillic to Latin
-    cyrillic_to_latin = {
-        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
-        'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
-        'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts',
-        'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu',
-        'я': 'ya',
-        'А': 'A', 'Б': 'B', 'В': 'V', 'Г': 'G', 'Д': 'D', 'Е': 'E', 'Ё': 'Yo', 'Ж': 'Zh',
-        'З': 'Z', 'И': 'I', 'Й': 'Y', 'К': 'K', 'Л': 'L', 'М': 'M', 'Н': 'N', 'О': 'O',
-        'П': 'P', 'Р': 'R', 'С': 'S', 'Т': 'T', 'У': 'U', 'Ф': 'F', 'Х': 'H', 'Ц': 'Ts',
-        'Ч': 'Ch', 'Ш': 'Sh', 'Щ': 'Sch', 'Ъ': '', 'Ы': 'Y', 'Ь': '', 'Э': 'E', 'Ю': 'Yu',
-        'Я': 'Ya'
-    }
-    
     # Transliterate the first line
-    transliterated = ''.join(cyrillic_to_latin.get(char, char) for char in first_line)
+    transliterated = transliterate_ukrainian(first_line)
     
     slug = (
         re.sub(r"[^a-zA-Z0-9]+", "_", transliterated)
