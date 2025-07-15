@@ -4,3 +4,7 @@ __pycache__/
 *.py[cod]
 .env
 .ipynb_checkpoints/ 
+# data artifacts
+data/raw_pdfs/
+data/faiss_index
+data/doc_map.pkl
