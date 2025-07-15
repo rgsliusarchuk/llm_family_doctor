@@ -4,7 +4,11 @@ from __future__ import annotations
 import csv
 import datetime as dt
 import os
+import sys
 from pathlib import Path
+
+# Add current directory to Python path for imports
+sys.path.append(str(Path(__file__).parent))
 
 # Disable tokenizers parallelism to avoid warnings in multiprocessing
 os.environ["TOKENIZERS_PARALLELISM"] = "false"

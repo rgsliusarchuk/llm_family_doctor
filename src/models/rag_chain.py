@@ -9,6 +9,7 @@ This module provides a unified interface for the entire RAG pipeline:
 """
 from __future__ import annotations
 
+import os
 from typing import List, Dict, Any
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -19,6 +20,14 @@ from langchain.schema import Document
 from src.config import settings
 from src.models.langchain_vector_store import search_documents
 from src.models.prompts import FAMILY_DOCTOR_PROMPT_TEMPLATE
+
+# ────────────────────────── LangSmith Setup ─────────────────────────────────
+# Explicitly set LangSmith environment variables if configured
+if settings.langsmith_api_key:
+    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith_api_key
+    os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project
+    os.environ["LANGCHAIN_ENDPOINT"] = settings.langsmith_endpoint
+    os.environ["LANGCHAIN_TRACING_V2"] = "true"
 
 # ────────────────────────── LLM Setup ──────────────────────────────────────
 llm = ChatOpenAI(
