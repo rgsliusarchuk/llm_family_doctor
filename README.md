@@ -6,7 +6,7 @@ Single-repo for data-prep **and** Streamlit UI.
 * **app**      → `app.py` (run locally or on Streamlit Cloud)
 * **testing**  → `tests/test_index.py` (comprehensive index testing)
 
-[![Run data prep in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rgsliusarchuk/llm_family_doctor/blob/main/notebooks/data_prep.ipynb)
+[![Run data prep in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rgsliusarchuk/llm_family_doctor/blob/master/notebooks/data_prep.ipynb)
 
 ## 🚀 Quick Start
 
