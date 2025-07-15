@@ -1,122 +1,81 @@
 #!/usr/bin/env python
-"""CLI: convert clinical protocol PDFs → Markdown files.
+"""
+Embed Ukrainian Markdown protocols with a Hugging-Face model
+and save a FAISS index + ID→text map.
 
-Typical workflow
-----------------
-1. Download or collect PDFs into **data/raw_pdfs/** (or any folder).
-2. Run this script to extract text and save cleaned Markdown copies
-   into **data/protocols/**.  Those `.md` files are used later for
-   embedding + FAISS indexing.
-
-Examples
---------
-# Ingest **one** file
-python scripts/ingest_protocol.py path/to/file.pdf
-
-# Ingest **all** PDFs in a directory (non‑recursive)
-python scripts/ingest_protocol.py --dir data/raw_pdfs
-
-# Ingest **all** PDFs in a directory and sub‑directories
-python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive
+USAGE
+  # in repo root, after ingest_protocol.py produced data/protocols/*.md
+  python src/indexing/build_index.py \
+         --hf-model intfloat/multilingual-e5-base
 """
 from __future__ import annotations
 
-import argparse
-import re
+import argparse, pickle
+from pathlib import Path
+from typing import Sequence
+
+import faiss, numpy as np
+from sentence_transformers import SentenceTransformer
 import sys
 from pathlib import Path
 
-import pdfplumber
-from tqdm import tqdm
+# Add the src directory to the Python path
+sys.path.append(str(Path(__file__).parent.parent))
 
-from ..utils.transliteration import transliterate_ukrainian
+from config import settings
 
-# ---------- config -----------------------------------------------------------
-RAW_DIR = Path("data/raw_pdfs")      # default source
-OUT_DIR = Path("data/protocols")     # default target for markdown
+# paths ─────────────────────────────────────────────────────────────
+PROTOCOLS_DIR = Path("data/protocols")
+INDEX_PATH    = Path(settings.index_path)
+MAP_PATH      = Path(settings.map_path)
+SNIPPET_LEN   = 2_000               # first chars stored next to vector
+BATCH_SIZE    = 16                  # tweak for GPU / RAM
 
-# -----------------------------------------------------------------------------
-
-def pdf_to_markdown(pdf_path: Path, out_dir: Path = OUT_DIR) -> Path:
-    """Read *pdf_path* and write `out_dir/<slug>.md`; return markdown path."""
-    if not pdf_path.exists():
-        raise FileNotFoundError(pdf_path)
-
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # ── extract text ──────────────────────────────────────────────────────────
-    with pdfplumber.open(pdf_path) as pdf:
-        pages_text = [page.extract_text() or "" for page in pdf.pages]
-    raw_text = "\n".join(pages_text)
-
-    if not raw_text.strip():
-        raise ValueError(f"No extractable text in {pdf_path}")
-
-    # ── derive title and slug ────────────────────────────────────────────────
-    first_line = next((ln.strip() for ln in raw_text.splitlines() if ln.strip()), "untitled protocol")
-    
-    # Transliterate the first line
-    transliterated = transliterate_ukrainian(first_line)
-    
-    slug = (
-        re.sub(r"[^a-zA-Z0-9]+", "_", transliterated)
-        .strip("_")
-        .lower()[:60]
+# ──────────────── helper ───────────────────────────────────────────
+def embed_docs(model: SentenceTransformer,
+               docs: Sequence[str]) -> np.ndarray:
+    """Return NxD float32 matrix."""
+    vecs = model.encode(
+        list(docs),
+        batch_size=BATCH_SIZE,
+        show_progress_bar=False,
+        normalize_embeddings=True,         # cosine → L2
     )
+    return np.asarray(vecs, dtype="float32")
 
-    # ── clean trivial whitespace ─────────────────────────────────────────────
-    cleaned = re.sub(r"\n{3,}", "\n\n", raw_text).strip()
+# ─────────────── main ──────────────────────────────────────────────
+def build_index(hf_model_id: str):
+    md_files = sorted(PROTOCOLS_DIR.glob("*.md"))
+    if not md_files:
+        raise SystemExit("No .md files in data/protocols – run ingest_protocol.py first.")
 
-    md_path = out_dir / f"{slug}.md"
-    md_path.write_text(f"# {first_line}\n\n{cleaned}\n", encoding="utf-8")
-    return md_path
+    print(f"🔹 Loading {hf_model_id} …")
+    model = SentenceTransformer(hf_model_id)
 
+    texts, snippets = [], []
+    for fp in md_files:
+        txt = fp.read_text(encoding="utf-8")
+        texts.append(txt)
+        snippets.append(txt[:SNIPPET_LEN])
 
-def ingest_path(target: Path, recursive: bool = False):
-    """Ingest a single PDF or all PDFs inside *target* directory."""
-    if target.is_file():
-        if target.suffix.lower() != ".pdf":
-            sys.stderr.write(f"⚠️  {target} is not a PDF — skipped.\n")
-            return
-        try:
-            out_md = pdf_to_markdown(target)
-            try:
-                relative_path = out_md.relative_to(Path.cwd())
-                print(f"✔️  {target.name} → {relative_path}")
-            except ValueError:
-                # If paths don't share common parent, just show the filename
-                print(f"✔️  {target.name} → {out_md.name}")
-        except Exception as e:
-            sys.stderr.write(f"⚠️  {target}: {e}\n")
-    elif target.is_dir():
-        pattern = "**/*.pdf" if recursive else "*.pdf"
-        pdf_files = sorted(target.glob(pattern))
-        if not pdf_files:
-            sys.stderr.write("(no PDFs found)\n")
-            return
-        for pdf in tqdm(pdf_files, desc="Converting", unit="file"):
-            try:
-                pdf_to_markdown(pdf)
-            except Exception as e:
-                sys.stderr.write(f"⚠️  {pdf}: {e}\n")
-    else:
-        sys.stderr.write("Error: path must be a PDF file or directory.\n")
+    print(f"🔹 Encoding {len(texts)} documents")
+    vectors = embed_docs(model, texts)           # -> ndarray [N, D]
 
+    # FAISS expects float32 & contiguous
+    index = faiss.IndexFlatIP(vectors.shape[1])  # cosine sim (normed)
+    index.add(vectors)
 
-# -----------------------------------------------------------------------------
+    INDEX_PATH.parent.mkdir(parents=True, exist_ok=True)
+    faiss.write_index(index, str(INDEX_PATH))
+    with open(MAP_PATH, "wb") as f:
+        pickle.dump(snippets, f)
 
-def main():
-    parser = argparse.ArgumentParser(description="Convert PDF protocols into Markdown files")
-    group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("pdf", nargs="?", type=Path, help="Single PDF file to ingest")
-    group.add_argument("--dir", "-d", type=Path, help="Directory containing PDFs")
-    parser.add_argument("--recursive", "-r", action="store_true", help="Recurse into sub‑directories when using --dir")
-    args = parser.parse_args()
-
-    target = args.dir if args.dir else args.pdf
-    ingest_path(target, recursive=args.recursive)
-    print("Done.")
-
+    print(f"✅  Saved index → {INDEX_PATH}  (vectors: {index.ntotal})")
 
 if __name__ == "__main__":
-    main()
+    p = argparse.ArgumentParser()
+    p.add_argument("--hf-model",
+                   default=settings.model_id,
+                   help="Sentence-Transformers model id")
+    args = p.parse_args()
+    build_index(args.hf_model)
