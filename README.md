@@ -7,3 +7,18 @@ Single-repo for data-prep **and** Streamlit UI.
 
 [![Run data prep in Colab](https://colab.research.google.com/assets/colab-badge.svg)]
 (https://colab.research.google.com/github/rsliusarchuk/llm-family-doctor/blob/main/notebooks/data_prep.ipynb) 
+
+Ingest files:
+
+```python scripts/ingest_protocol.py data/raw_pdfs/example.pdf```
+
+```python scripts/ingest_protocol.py --dir data/raw_pdfs```
+
+```python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive```
+
+
+
+
+
+
+
