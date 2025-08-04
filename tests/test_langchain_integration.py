@@ -5,8 +5,8 @@ import os
 import sys
 from pathlib import Path
 
-# Add src to path
-sys.path.append(str(Path(__file__).parent / "src"))
+# Add parent directory to path to import src modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 def test_imports():
     """Test that all LangChain components can be imported."""
@@ -15,9 +15,6 @@ def test_imports():
     try:
         from src.config import settings
         print("✅ Settings imported")
-        
-        from src.models.llm_client import generate_response, embedder
-        print("✅ LLM client imported")
         
         from src.models.langchain_vector_store import search, search_documents
         print("✅ LangChain vector store imported")
@@ -28,28 +25,6 @@ def test_imports():
         return True
     except ImportError as e:
         print(f"❌ Import failed: {e}")
-        return False
-
-def test_embedding():
-    """Test embedding functionality."""
-    print("\n🔍 Testing embedding...")
-    
-    try:
-        from src.models.llm_client import embedder
-        
-        # Test single text
-        text = "кашель температура"
-        vec = embedder(text)
-        print(f"✅ Single embedding shape: {vec.shape}")
-        
-        # Test multiple texts
-        texts = ["кашель", "температура", "біль у горлі"]
-        vecs = embedder(texts)
-        print(f"✅ Multiple embeddings shape: {vecs.shape}")
-        
-        return True
-    except Exception as e:
-        print(f"❌ Embedding test failed: {e}")
         return False
 
 def test_vector_search():
@@ -126,7 +101,6 @@ def main():
     
     tests = [
         test_imports,
-        test_embedding,
         test_vector_search,
         test_rag_chain,
         test_langsmith_config

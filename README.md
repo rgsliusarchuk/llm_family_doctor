@@ -118,14 +118,12 @@ The Streamlit app automatically handles index building on first startup:
 
 This project now supports **LangChain** and **LangSmith** for enhanced RAG capabilities and monitoring:
 
-### Features Added:
+### Features:
 - **LangChain RAG Pipeline**: Structured retrieval and generation using LangChain components
 - **LangSmith Tracing**: Monitor and debug your RAG pipeline in real-time
 - **Enhanced Vector Store**: Better document handling with metadata
-- **Backward Compatibility**: Original implementation still works if LangChain is not available
 
-### New Components:
-- `src/models/llm_client.py` - LLM client with embedding and response generation
+### Components:
 - `src/models/langchain_vector_store.py` - Enhanced vector store with Document objects
 - `src/models/rag_chain.py` - Complete RAG pipeline using LangChain
 
