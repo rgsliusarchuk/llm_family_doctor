@@ -15,6 +15,11 @@ sys.path.append(str(Path(__file__).parent))
 # Disable tokenizers parallelism to avoid warnings in multiprocessing
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# --------------- routers ----------------
+from src.api import clinic_router, doctors_router
+
+# Lifespan helper
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -26,14 +31,29 @@ from src.config import settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ── Lifespan (startup / shutdown) ────────────────────────────────────────────
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Runs once on startup (before yield) and once on shutdown (after)."""
+    logger.info("Starting API server…")
+    initialize_models()          # <── your original startup logic
+    yield                        # ── app runs between these two lines
+    logger.info("API shutting down — bye!")
+
 # ── FastAPI app ──────────────────────────────────────────────────────────────
 app = FastAPI(
     title="LLM Family Doctor API",
     description="API for generating medical diagnoses using RAG with Ukrainian medical protocols",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan,           # <── new lifespan
 )
 
-# Add CORS middleware
+# Routers
+app.include_router(clinic_router)
+app.include_router(doctors_router)
+
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Configure appropriately for production
@@ -94,11 +114,7 @@ def initialize_models():
         model_loaded = False
 
 # ── API endpoints ────────────────────────────────────────────────────────────
-@app.on_event("startup")
-async def startup_event():
-    """Initialize models on startup."""
-    logger.info("Starting API server...")
-    initialize_models()
+# (startup decorator removed — logic now lives in lifespan)
 
 @app.get("/", response_model=Dict[str, str])
 async def root():

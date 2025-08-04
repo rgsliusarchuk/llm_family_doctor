@@ -22,6 +22,13 @@ help:
 	@echo "  test-index     Test vector index functionality"
 	@echo "  test-langchain Test LangChain integration"
 	@echo ""
+	@echo "🗄️  Database:"
+	@echo "  db-init        Create empty SQLite schema (alembic upgrade head if DB absent)"
+	@echo "  db-revision    Autogenerate a new Alembic revision (use MESSAGE=\"...\")"
+	@echo "  db-upgrade     Apply all pending migrations (alembic upgrade head)"
+	@echo "  db-downgrade   Roll back one revision (alembic downgrade -1)"
+	@echo "  db-seed        Seed demo clinic & doctor rows"
+	@echo ""
 	@echo "🧹 Maintenance:"
 	@echo "  clean          Clean up generated files"
 	@echo "  logs           View recent logs"
@@ -117,4 +124,41 @@ dev-setup: install setup-env
 
 full-setup: dev-setup data-prep build-index
 	@echo "✅ Full setup complete!"
-	@echo "🚀 Ready to start with 'make start-streamlit'" 
+	@echo "🚀 Ready to start with 'make start-streamlit'"
+
+# -------------------------------------------------------------------------
+# 🗄️  DATABASE TARGETS
+# -------------------------------------------------------------------------
+.PHONY: db-init db-revision db-upgrade db-downgrade db-seed
+
+db-init:
+	@echo "🗄️  Creating / upgrading SQLite schema..."
+	alembic upgrade head
+
+# Usage: make db-revision MESSAGE="add phone column"
+db-revision:
+	@if [ -z "$(MESSAGE)" ]; then \
+		echo "❌  Please supply MESSAGE=\"your note\""; exit 1; \
+	fi
+	alembic revision --autogenerate -m "$(MESSAGE)"
+
+db-upgrade:
+	alembic upgrade head
+
+db-downgrade:
+	alembic downgrade -1
+
+# Very lightweight seed script (Python one-liner)
+db-seed:
+	python - <<'PY' \
+from sqlmodel import Session, select; from src.db import engine; from src.db.models import Clinic, Doctor; \
+with Session(engine) as s: \
+    if not s.exec(select(Clinic)).first(): \
+        c = Clinic(address="Kyiv, Main St 10", opening_hours="Mon-Sat 08-20", services="Терапія, Педіатрія"); \
+        s.add(c); \
+    if not s.exec(select(Doctor)).first(): \
+        d = Doctor(full_name="д-р Іван Петренко", position="Сімейний лікар", schedule="Пн-Пт 09-17"); \
+        s.add(d); \
+    s.commit(); \
+print("✅ Demo rows inserted") \
+PY 
