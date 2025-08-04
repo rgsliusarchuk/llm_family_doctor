@@ -17,6 +17,8 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # --------------- routers ----------------
 from src.api import clinic_router, doctors_router
+from src.api.router_diagnose import router as diagnoses_router
+from src.api.router_doctor_answers import router as doc_ans_router
 
 # Lifespan helper
 from contextlib import asynccontextmanager
@@ -52,6 +54,8 @@ app = FastAPI(
 # Routers
 app.include_router(clinic_router)
 app.include_router(doctors_router)
+app.include_router(diagnoses_router)              # /diagnoses
+app.include_router(doc_ans_router)                # /doctor_answers
 
 # CORS middleware
 app.add_middleware(
@@ -64,6 +68,8 @@ app.add_middleware(
 
 # ── Pydantic models ──────────────────────────────────────────────────────────
 class DiagnosisRequest(BaseModel):
+    gender: str = Field(..., description="Стать пацієнта (m/f)")
+    age: int = Field(..., description="Вік пацієнта")
     symptoms: str = Field(..., description="Опис симптомів пацієнта")
     user_id: Optional[str] = Field(None, description="ID користувача (для Telegram)")
     chat_id: Optional[str] = Field(None, description="ID чату (для Telegram)")
@@ -147,9 +153,35 @@ async def generate_diagnosis(request: DiagnosisRequest, background_tasks: Backgr
         raise HTTPException(status_code=400, detail="Symptoms cannot be empty")
     
     try:
+        # Generate symptoms hash for caching
+        from hashlib import sha256
+        symptoms_hash = sha256(f"{request.gender}|{request.age}|{request.symptoms.strip().lower()}".encode()).hexdigest()
+        
+        # Check for cached approved answer
+        from src.db import get_session
+        from src.db.models import DoctorAnswer
+        from sqlmodel import select
+        
+        session = next(get_session())
+        cached_answer = session.exec(
+            select(DoctorAnswer).where(
+                DoctorAnswer.symptoms_hash == symptoms_hash,
+                DoctorAnswer.approved == True
+            )
+        ).first()
+        
+        if cached_answer:
+            # Return cached answer
+            return DiagnosisResponse(
+                diagnosis=cached_answer.answer_md,
+                protocols_used=[],  # No protocols used for cached answers
+                request_id=f"cached_{symptoms_hash}"
+            )
+        
         # Generate diagnosis using RAG pipeline
         from src.models.rag_chain import generate_rag_response
-        result = generate_rag_response(request.symptoms, top_k=request.top_k)
+        query = f"Стать: {request.gender}, Вік: {request.age}, Симптоми: {request.symptoms}"
+        result = generate_rag_response(query, top_k=request.top_k)
         answer = result["response"]
         retrieved_docs = result["documents"]
         

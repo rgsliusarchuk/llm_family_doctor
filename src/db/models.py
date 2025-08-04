@@ -36,7 +36,8 @@ class DoctorAnswer(SQLModel, table=True):
     """Cache of answers a doctor marked as approved or edited."""
     __tablename__ = "doctor_answers"      # renamed table
     id: int | None = Field(default=None, primary_key=True)
-    symptoms_hash: str                  # sha256(gender|age|symptoms)
-    answer_md: str                      # markdown (doctor edition)
+    symptoms_hash: str  # SHA-256 of gender|age|symptoms
+    answer_md: str
+    approved: bool = False
     doctor_id: int | None = Field(default=None, foreign_key="doctors.id")
     created_at: datetime = Field(default_factory=datetime.utcnow) 
