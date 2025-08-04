@@ -13,3 +13,8 @@ python-dotenv
 langchain>=0.1.0
 langchain-openai>=0.1.0
 langsmith>=0.1.0
+sqlmodel>=0.0.24
+alembic>=1.13.1
+redis>=5.0.0            # Redis client for exact/semantic cache
+fastapi-utils>=0.2.1    # Router & CBV helpers
+guardrails-ai>=0.4.0    # I/O guardrails for LLM responses
