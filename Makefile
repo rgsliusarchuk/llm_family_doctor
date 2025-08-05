@@ -16,6 +16,12 @@ help:
 	@echo "  redis-start        Start Redis cache container"
 	@echo "  redis-stop         Stop Redis cache container"
 	@echo ""
+	@echo "🐳 Docker & Deployment:"
+	@echo "  docker-build   Build Docker image"
+	@echo "  docker-run     Run with Docker Compose"
+	@echo "  docker-test    Test Docker deployment"
+	@echo "  deploy-prod    Deploy to production via GitHub Actions"
+	@echo ""
 	@echo "📊 Data & Index:"
 	@echo "  data-prep      Ingest PDF protocols to markdown"
 	@echo "  build-index    Build FAISS index from protocols"
@@ -200,4 +206,29 @@ with Session(engine) as s: \
         s.add(d); \
     s.commit(); \
 print("✅ Demo rows inserted") \
-PY 
+PY
+
+# -------------------------------------------------------------------------
+# 🐳 DOCKER & DEPLOYMENT TARGETS
+# -------------------------------------------------------------------------
+.PHONY: docker-build docker-run deploy-prod
+
+docker-build:
+	@echo "🐳 Building Docker image..."
+	docker build -t familydoc:dev .
+
+docker-run:
+	@echo "🐳 Running with Docker Compose..."
+	docker compose up
+
+docker-run-build:
+	@echo "🐳 Running with Docker Compose (rebuild)..."
+	docker compose up --build
+
+docker-test:
+	@echo "🧪 Testing Docker deployment..."
+	python test_deployment.py
+
+deploy-prod:
+	@echo "🚀 Triggering production deployment..."
+	gh workflow run deploy.yml 
