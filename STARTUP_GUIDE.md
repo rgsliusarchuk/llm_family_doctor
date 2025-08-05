@@ -39,7 +39,19 @@ uvicorn api_server:app --host 0.0.0.0 --port 8000 --reload
 🌐 **API available at:** http://localhost:8000
 📚 **API Documentation:** http://localhost:8000/docs
 
-### 3. Telegram Bot (Additional)
+### 3. Redis Cache (Recommended for Production)
+
+For optimal performance, start Redis cache:
+
+```bash
+# Start Redis container
+make redis-start
+
+# Stop Redis container
+make redis-stop
+```
+
+### 4. Telegram Bot (Additional)
 
 To run the Telegram bot:
 
@@ -86,6 +98,10 @@ API_BASE_URL=http://localhost:8000
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
 API_BASE_URL=http://localhost:8000
 
+# Redis cache (optional)
+REDIS_URL=redis://localhost:6379/0
+REDIS_TTL_DAYS=30
+
 # Other settings (already existing)
 OPENAI_API_KEY=your_openai_api_key
 MODEL_ID=your_model_id
@@ -109,17 +125,22 @@ llm_family_doctor/
 
 ## 🚀 Recommended Launch Order
 
-1. **First, start the API server:**
+1. **First, start Redis cache (recommended for production):**
+   ```bash
+   make redis-start
+   ```
+
+2. **Then start the API server:**
    ```bash
    python start_api_server.py
    ```
 
-2. **Then start Streamlit (in a separate terminal):**
+3. **Then start Streamlit (in a separate terminal):**
    ```bash
    python start_streamlit.py
    ```
 
-3. **Optionally start the Telegram bot (in a third terminal):**
+4. **Optionally start the Telegram bot (in a third terminal):**
    ```bash
    python telegram_bot_example.py
    ```

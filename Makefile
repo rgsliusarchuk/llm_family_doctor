@@ -7,19 +7,25 @@ help:
 	@echo "📦 Setup:"
 	@echo "  install        Install Python dependencies"
 	@echo "  setup-env      Copy environment template and create .env"
+	@echo "  local-setup    Set up local development directories"
 	@echo ""
 	@echo "🚀 Start Services:"
 	@echo "  start-streamlit    Start Streamlit web interface"
 	@echo "  start-api          Start API server"
 	@echo "  start-bot          Start Telegram bot"
+	@echo "  redis-start        Start Redis cache container"
+	@echo "  redis-stop         Stop Redis cache container"
 	@echo ""
 	@echo "📊 Data & Index:"
 	@echo "  data-prep      Ingest PDF protocols to markdown"
 	@echo "  build-index    Build FAISS index from protocols"
+	@echo "  local-update   Update protocols and rebuild index (local workflow)"
 	@echo ""
 	@echo "🧪 Testing:"
 	@echo "  test           Run all tests"
 	@echo "  test-index     Test vector index functionality"
+	@echo "  test-cache     Test cache functionality"
+	@echo "  debug-cache    Debug cache without Redis"
 	@echo "  test-langchain Test LangChain integration"
 	@echo ""
 	@echo "🗄️  Database:"
@@ -64,6 +70,15 @@ start-bot:
 	@echo "🤖 Starting Telegram bot..."
 	python telegram_bot_example.py
 
+redis-start:
+	@echo "🔴 Starting Redis cache..."
+	docker run --rm -d -p 6379:6379 --name redis-cache redis:7
+	@echo "✅ Redis running on localhost:6379"
+
+redis-stop:
+	@echo "🔴 Stopping Redis cache..."
+	docker stop redis-cache 2>/dev/null || echo "Redis not running"
+
 # Data preparation
 data-prep:
 	@echo "📊 Ingesting PDF protocols..."
@@ -84,6 +99,22 @@ build-index:
 		echo "💡 Please run 'make data-prep' first"; \
 	fi
 
+# Local workflow helpers
+local-update:
+	@echo "🔄 Updating local protocols and rebuilding index..."
+	@make data-prep
+	@make build-index
+	@echo "✅ Local update complete!"
+
+local-setup:
+	@echo "🚀 Setting up local development environment..."
+	@mkdir -p data/raw_pdfs data/protocols logs
+	@echo "✅ Directories created"
+	@echo "💡 Next steps:"
+	@echo "   1. Add PDF files to data/raw_pdfs/"
+	@echo "   2. Run 'make local-update' to process PDFs and build index"
+	@echo "   3. Run 'make start-streamlit' to start the app"
+
 # Testing
 test:
 	@echo "🧪 Running all tests..."
@@ -92,6 +123,14 @@ test:
 test-index:
 	@echo "🔍 Testing vector index..."
 	python tests/test_index.py
+
+test-cache:
+	@echo "🔍 Testing cache functionality..."
+	python -m pytest tests/test_cache.py -v
+
+debug-cache:
+	@echo "🔍 Debugging cache functionality..."
+	python tests/debug_cache.py
 
 test-langchain:
 	@echo "🔗 Testing LangChain integration..."

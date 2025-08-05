@@ -5,7 +5,8 @@ import sys
 import logging
 import asyncio
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict, Any
+from enum import Enum
 
 # Add current directory to Python path for imports
 sys.path.append(str(Path(__file__).parent))
@@ -24,6 +25,18 @@ load_dotenv()
 # ── Configuration ───────────────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+
+# ── State Machine ───────────────────────────────────────────────────────────
+class UserState(str, Enum):
+    IDLE = "idle"
+    GENDER = "gender"
+    AGE = "age"
+    DOCTOR = "doctor"
+    SYMPTOMS = "symptoms"
+    WAITING_DIAGNOSIS = "waiting_diagnosis"
+
+# User session storage (in production, use Redis or DB)
+user_sessions: Dict[int, Dict[str, Any]] = {}
 
 # ── Configure logging ───────────────────────────────────────────────────────
 logging.basicConfig(
@@ -54,6 +67,9 @@ class APIClient:
     
     async def generate_diagnosis(
         self, 
+        gender: str,
+        age: int,
+        doctor_id: int,
         symptoms: str, 
         user_id: str, 
         chat_id: str
@@ -61,15 +77,15 @@ class APIClient:
         """Generate diagnosis using the API."""
         try:
             payload = {
+                "gender": gender,
+                "age": age,
                 "symptoms": symptoms,
-                "user_id": user_id,
-                "chat_id": chat_id,
                 "top_k": 3
             }
             
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    f"{self.base_url}/diagnose",
+                    f"{self.base_url}/diagnoses",
                     json=payload
                 ) as response:
                     if response.status == 200:
@@ -81,6 +97,46 @@ class APIClient:
         except Exception as e:
             logger.error(f"Error calling API: {e}")
             return None
+    
+    async def get_doctors(self) -> Optional[list]:
+        """Get list of available doctors."""
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"{self.base_url}/doctors") as response:
+                    if response.status == 200:
+                        return await response.json()
+                    return None
+        except Exception as e:
+            logger.error(f"Error getting doctors: {e}")
+            return None
+    
+    async def approve_diagnosis(self, request_id: str, doctor_id: int) -> bool:
+        """Approve a diagnosis."""
+        try:
+            payload = {"doctor_id": doctor_id}
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/doctor_review/{request_id}/approve",
+                    json=payload
+                ) as response:
+                    return response.status == 200
+        except Exception as e:
+            logger.error(f"Error approving diagnosis: {e}")
+            return False
+    
+    async def edit_diagnosis(self, request_id: str, doctor_id: int, answer_md: str) -> bool:
+        """Edit a diagnosis."""
+        try:
+            payload = {"doctor_id": doctor_id, "answer_md": answer_md}
+            async with aiohttp.ClientSession() as session:
+                async with session.patch(
+                    f"{self.base_url}/doctor_review/{request_id}/edit",
+                    json=payload
+                ) as response:
+                    return response.status == 200
+        except Exception as e:
+            logger.error(f"Error editing diagnosis: {e}")
+            return False
 
 # ── Global API client ───────────────────────────────────────────────────────
 api_client = APIClient()
@@ -88,20 +144,31 @@ api_client = APIClient()
 # ── Telegram bot handlers ───────────────────────────────────────────────────
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle /start command."""
+    user_id = update.effective_user.id
+    
+    # Initialize user session
+    user_sessions[user_id] = {
+        "state": UserState.IDLE,
+        "gender": None,
+        "age": None,
+        "doctor_id": None,
+        "symptoms": None,
+        "session_id": None
+    }
+    
     welcome_message = """
 🩺 Вітаю! Я LLM-асистент сімейного лікаря.
 
-Я можу допомогти вам з попереднім діагнозом на основі ваших симптомів.
+Я допоможу вам з попереднім діагнозом. Спочатку потрібно зібрати необхідну інформацію.
 
-📝 Щоб отримати діагноз, просто опишіть ваші симптоми в повідомленні.
-
-Наприклад:
-• "Біль у горлі, температура 38°C, кашель 3 дні"
-• "Головний біль, нудота, світлочутливість"
-• "Біль у животі, діарея, блювання"
-
-⚠️ Важливо: Це лише попередній діагноз. Завжди консультуйтесь з лікарем для остаточного діагнозу та лікування.
+📝 Давайте почнемо! Яка ваша стать?
+• чоловік
+• жінка  
+• інше
     """
+    
+    # Update user state
+    user_sessions[user_id]["state"] = UserState.GENDER
     
     await update.message.reply_text(welcome_message.strip())
 
@@ -136,86 +203,161 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(status_message)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle text messages with symptoms."""
-    user_id = str(update.effective_user.id)
-    chat_id = str(update.effective_chat.id)
-    symptoms = update.message.text
+    """Handle text messages with state machine."""
+    user_id = update.effective_user.id
+    chat_id = update.effective_chat.id
+    message_text = update.message.text
     
-    # Check if API is healthy
-    if not await api_client.health_check():
-        await update.message.reply_text(
-            "❌ Сервер тимчасово недоступний. Спробуйте пізніше."
-        )
+    # Get user session
+    if user_id not in user_sessions:
+        await start_command(update, context)
         return
     
-    # Send typing indicator
-    await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+    session = user_sessions[user_id]
+    current_state = session["state"]
     
-    # Generate diagnosis
-    result = await api_client.generate_diagnosis(symptoms, user_id, chat_id)
+    # Handle different states
+    if current_state == UserState.GENDER:
+        # Process gender input
+        gender_lower = message_text.lower().strip()
+        if gender_lower in ["чоловік", "male", "м", "m"]:
+            session["gender"] = "male"
+            session["state"] = UserState.AGE
+            await update.message.reply_text("Дякую! Тепер введіть ваш вік (число від 0 до 120):")
+        elif gender_lower in ["жінка", "female", "ж", "f"]:
+            session["gender"] = "female"
+            session["state"] = UserState.AGE
+            await update.message.reply_text("Дякую! Тепер введіть ваш вік (число від 0 до 120):")
+        elif gender_lower in ["інше", "other", "о"]:
+            session["gender"] = "other"
+            session["state"] = UserState.AGE
+            await update.message.reply_text("Дякую! Тепер введіть ваш вік (число від 0 до 120):")
+        else:
+            await update.message.reply_text("Будь ласка, введіть: чоловік, жінка, або інше")
     
-    if result:
-        diagnosis = result["diagnosis"]
-        request_id = result["request_id"]
+    elif current_state == UserState.AGE:
+        # Process age input
+        try:
+            age = int(message_text.strip())
+            if age < 0 or age > 120:
+                await update.message.reply_text("Вік повинен бути від 0 до 120 років. Спробуйте ще раз:")
+            else:
+                session["age"] = age
+                session["state"] = UserState.DOCTOR
+                
+                # Get available doctors
+                doctors = await api_client.get_doctors()
+                if doctors:
+                    doctor_list = "\n".join([f"• {doc['id']} - {doc['full_name']} ({doc['position']})" for doc in doctors])
+                    await update.message.reply_text(f"Дякую! Ваш вік: {age} років.\n\nВиберіть лікаря:\n{doctor_list}")
+                else:
+                    await update.message.reply_text("Дякую! Ваш вік: {age} років.\n\nВведіть ID лікаря:")
+        except ValueError:
+            await update.message.reply_text("Будь ласка, введіть коректний вік (число):")
+    
+    elif current_state == UserState.DOCTOR:
+        # Process doctor selection
+        try:
+            doctor_id = int(message_text.strip())
+            session["doctor_id"] = doctor_id
+            session["state"] = UserState.SYMPTOMS
+            await update.message.reply_text("Дякую! Тепер опишіть ваші симптоми детально:")
+        except ValueError:
+            await update.message.reply_text("Будь ласка, введіть коректний ID лікаря (число):")
+    
+    elif current_state == UserState.SYMPTOMS:
+        # Process symptoms and generate diagnosis
+        session["symptoms"] = message_text
+        session["state"] = UserState.WAITING_DIAGNOSIS
         
-        # Create feedback buttons
-        keyboard = [
-            [
-                InlineKeyboardButton("✅ Схвалити", callback_data=f"approve_{request_id}"),
-                InlineKeyboardButton("❌ Відхилити", callback_data=f"reject_{request_id}")
+        # Check if API is healthy
+        if not await api_client.health_check():
+            await update.message.reply_text("❌ Сервер тимчасово недоступний. Спробуйте пізніше.")
+            session["state"] = UserState.SYMPTOMS
+            return
+        
+        # Send typing indicator
+        await context.bot.send_chat_action(chat_id=chat_id, action="typing")
+        
+        # Generate diagnosis
+        result = await api_client.generate_diagnosis(
+            gender=session["gender"],
+            age=session["age"],
+            doctor_id=session["doctor_id"],
+            symptoms=session["symptoms"],
+            user_id=str(user_id),
+            chat_id=str(chat_id)
+        )
+        
+        if result:
+            diagnosis = result["diagnosis"]
+            symptoms_hash = result["symptoms_hash"]
+            
+            # Store request info for doctor review
+            session["request_id"] = symptoms_hash
+            
+            # Create doctor review buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Схвалити", callback_data=f"approve_{symptoms_hash}"),
+                    InlineKeyboardButton("✏️ Редагувати", callback_data=f"edit_{symptoms_hash}")
+                ]
             ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        # Send diagnosis with feedback buttons
-        await update.message.reply_text(
-            f"🩺 **Попередній діагноз:**\n\n{diagnosis}\n\n"
-            f"⚠️ Це лише попередній діагноз. Консультуйтесь з лікарем.",
-            reply_markup=reply_markup,
-            parse_mode='Markdown'
-        )
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            # Send diagnosis with doctor review buttons
+            await update.message.reply_text(
+                f"🩺 **Попередній діагноз:**\n\n{diagnosis}\n\n"
+                f"⚠️ Це лише попередній діагноз. Консультуйтесь з лікарем.",
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            
+            # Reset state for next diagnosis
+            session["state"] = UserState.IDLE
+        else:
+            await update.message.reply_text(
+                "❌ Не вдалося згенерувати діагноз. Перевірте опис симптомів та спробуйте ще раз."
+            )
+            session["state"] = UserState.SYMPTOMS
+    
     else:
-        await update.message.reply_text(
-            "❌ Не вдалося згенерувати діагноз. Перевірте опис симптомів та спробуйте ще раз."
-        )
+        # Unknown state, restart
+        await start_command(update, context)
 
 async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handle button callbacks for feedback."""
+    """Handle button callbacks for doctor review."""
     query = update.callback_query
     await query.answer()
     
     data = query.data
     action, request_id = data.split('_', 1)
     
-    # Send feedback to API
-    try:
-        payload = {
-            "request_id": request_id,
-            "status": action
-        }
-        
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{API_BASE_URL}/feedback",
-                json=payload
-            ) as response:
-                if response.status == 200:
-                    if action == "approve":
-                        await query.edit_message_text(
-                            "✅ Дякуємо за схвалення діагнозу!"
-                        )
-                    else:
-                        await query.edit_message_text(
-                            "❌ Дякуємо за відгук. Діагноз відхилено."
-                        )
-                else:
-                    await query.edit_message_text(
-                        "❌ Помилка збереження відгуку."
-                    )
-    except Exception as e:
-        logger.error(f"Error submitting feedback: {e}")
+    # For now, we'll use a default doctor ID (in production, get from user context)
+    doctor_id = 1  # Default doctor ID
+    
+    if action == "approve":
+        # Approve the diagnosis
+        success = await api_client.approve_diagnosis(request_id, doctor_id)
+        if success:
+            await query.edit_message_text(
+                "✅ Діагноз схвалено лікарем!"
+            )
+        else:
+            await query.edit_message_text(
+                "❌ Помилка схвалення діагнозу."
+            )
+    
+    elif action == "edit":
+        # For editing, we'll need to implement a more complex flow
+        # For now, just acknowledge the edit request
         await query.edit_message_text(
-            "❌ Помилка збереження відгуку."
+            "✏️ Функція редагування буде доступна в наступній версії."
+        )
+    
+    else:
+        await query.edit_message_text(
+            "❌ Невідома дія."
         )
 
 async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):

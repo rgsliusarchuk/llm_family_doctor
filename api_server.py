@@ -16,9 +16,14 @@ sys.path.append(str(Path(__file__).parent))
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # --------------- routers ----------------
-from src.api import clinic_router, doctors_router
-from src.api.router_diagnose import router as diagnoses_router
-from src.api.router_doctor_answers import router as doc_ans_router
+from src.api import (
+    clinic_router, 
+    doctors_router, 
+    diagnose_router, 
+    doctor_answers_router,
+    intake_router,
+    doctor_review_router
+)
 
 # Lifespan helper
 from contextlib import asynccontextmanager
@@ -54,8 +59,10 @@ app = FastAPI(
 # Routers
 app.include_router(clinic_router)
 app.include_router(doctors_router)
-app.include_router(diagnoses_router)              # /diagnoses
-app.include_router(doc_ans_router)                # /doctor_answers
+app.include_router(diagnose_router)               # /diagnoses
+app.include_router(doctor_answers_router)         # /doctor_answers
+app.include_router(intake_router)                 # /intake
+app.include_router(doctor_review_router)          # /doctor_review
 
 # CORS middleware
 app.add_middleware(

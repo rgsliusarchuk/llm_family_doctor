@@ -27,12 +27,18 @@ pip install -r requirements.txt
 # Copy environment template and add your API keys
 cp env.template .env          # then open .env and paste your keys
 
+# Set up local directories
+make local-setup
+
 # Add PDF files to data/raw_pdfs/
 # Then run the data preparation pipeline:
-python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive
+make local-update
+
+# Start Redis cache (optional but recommended for production)
+make redis-start
 
 # Start the app (it will build the index automatically on first run)
-streamlit run app.py
+make start-streamlit
 ```
 
 ## 📊 Data Preparation Pipeline
@@ -142,6 +148,42 @@ This project now supports **LangChain** and **LangSmith** for enhanced RAG capab
 - **Experimentation**: A/B test different prompts and retrieval strategies
 - **Production Ready**: Better error handling and observability
 
+## 🔄 Caching System
+
+The application implements a multi-layer caching system for optimal performance:
+
+### Cache Layers:
+1. **Exact Cache (Redis)**: SHA-256 hash of `gender|age|symptoms` → markdown answer
+2. **Semantic Cache (FAISS)**: In-memory index of approved doctor answers
+3. **Database Cache**: Approved answers stored in SQLite
+
+### Cache Flow:
+1. Check exact cache first (fastest)
+2. Check semantic cache for similar symptoms
+3. Check database for approved answers
+4. Generate new answer via RAG if no cache hit
+
+### Setup Redis Cache:
+```bash
+# Start Redis container
+make redis-start
+
+# Stop Redis container
+make redis-stop
+
+# Environment variables (optional)
+REDIS_URL=redis://localhost:6379/0
+REDIS_TTL_DAYS=30
+```
+
+### Benefits:
+- **Performance**: Sub-second response times for cached queries
+- **Cost Reduction**: Fewer LLM API calls
+- **Consistency**: Approved answers are reused
+- **Scalability**: Redis handles high concurrent load
+
+
+
 ## 📁 Project Structure
 
 ```
@@ -159,12 +201,17 @@ llm_family_doctor/
 ├── scripts/
 │   └── ingest_protocol.py        # PDF to markdown converter
 ├── src/
+│   ├── api/                      # FastAPI routers
+│   ├── cache/                    # Redis and semantic caching
 │   ├── config/                   # Configuration settings
+│   ├── db/                       # Database models and migrations
 │   ├── indexing/                 # Index building utilities
 │   ├── models/                   # LLM and vector store models
 │   └── utils/                    # Utility functions
+├── .github/workflows/            # GitHub Actions
 └── tests/
     ├── test_index.py             # Comprehensive index testing
+    ├── test_cache.py             # Cache functionality testing
     ├── debug_vector_store.py     # Debug utilities
     └── test_langchain_integration.py
 ```

@@ -10,6 +10,9 @@ from sqlmodel import Session, select
 from src.db import get_session
 from src.db.models import DoctorAnswer
 from src.models.rag_chain import generate_rag_response
+from src.cache.redis_cache import get_md, set_md
+from src.cache.doctor_semantic_index import semantic_lookup
+from src.guardrails.llm_guards import guard_input, guard_output
 
 router = APIRouter(
     prefix="/diagnoses",
@@ -54,12 +57,32 @@ async def diagnose(
 ) -> DiagnoseResponse:
     """
     Generate a diagnosis based on patient symptoms.
-    First checks for cached approved answers, then falls back to RAG.
+    First checks exact cache, then semantic cache, then DB approved answers, then RAG.
     """
-    # Generate symptoms hash
-    symptoms_hash = _symptoms_hash(request.gender, request.age, request.symptoms)
+    # Apply input guardrails
+    guarded_symptoms = guard_input(request.symptoms)
     
-    # Check for cached approved answer
+    # Generate symptoms hash
+    symptoms_hash = _symptoms_hash(request.gender, request.age, guarded_symptoms)
+    
+    # ---------- exact cache ----------
+    if md := get_md(symptoms_hash):
+        return DiagnoseResponse(
+            diagnosis=md, 
+            cached=True,
+            symptoms_hash=symptoms_hash
+        )
+    
+    # ---------- semantic cache ----------
+    query = f"Стать: {request.gender}, Вік: {request.age}, Симптоми: {guarded_symptoms}"
+    if (sem := semantic_lookup(query)) is not None:
+        return DiagnoseResponse(
+            diagnosis=sem, 
+            cached=True,
+            symptoms_hash=symptoms_hash
+        )
+    
+    # Check for cached approved answer in DB
     cached_answer = session.exec(
         select(DoctorAnswer).where(
             DoctorAnswer.symptoms_hash == symptoms_hash,
@@ -68,6 +91,8 @@ async def diagnose(
     ).first()
     
     if cached_answer:
+        # also prime exact Redis cache for next time
+        set_md(symptoms_hash, cached_answer.answer_md)
         return DiagnoseResponse(
             diagnosis=cached_answer.answer_md,
             cached=True,
@@ -75,11 +100,16 @@ async def diagnose(
         )
     
     # Generate new diagnosis using RAG
-    query = f"Стать: {request.gender}, Вік: {request.age}, Симптоми: {request.symptoms}"
     rag_result = generate_rag_response(query)
     
+    # Apply output guardrails
+    guarded_response = guard_output(rag_result["response"])
+    
+    # store fresh answer to Redis with TTL (not yet approved)
+    set_md(symptoms_hash, guarded_response)
+    
     return DiagnoseResponse(
-        diagnosis=rag_result["response"],
+        diagnosis=guarded_response,
         cached=False,
         symptoms_hash=symptoms_hash
     ) 
