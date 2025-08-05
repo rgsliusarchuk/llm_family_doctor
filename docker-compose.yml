@@ -1,31 +1,92 @@
 version: '3.8'
 
 services:
-  redis:
-    image: redis:7-alpine
+  # Reverse proxy
+  reverse-proxy:
+    image: traefik:latest
+    container_name: traefik
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./logs/traefik:/var/log/traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--log.level=INFO"
+    networks:
+      - web
+
+  # Redis cache service
+  cache:
+    image: redis:7-alpine
+    container_name: redis-cache
+    restart: unless-stopped
     volumes:
       - redis_data:/data
+      - ./logs/redis:/var/log/redis
+    command: redis-server --appendonly yes --logfile /var/log/redis/redis.log
+    networks:
+      - cache
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
-  app:
-    build:
-      context: .
-      args:
-        TARGET: ${TARGET:-all}
+  # Main application
+  familydoc:
+    image: ${ECR_REGISTRY:-familydoc}:${TAG:-latest}
+    container_name: familydoc-app
+    restart: unless-stopped
     env_file: .env
-    depends_on:
-      - redis
-    ports:
-      - "8000:8000"
-      - "8501:8501"
     volumes:
       - ./data:/app/data
+      - ./logs:/app/logs
+    depends_on:
+      cache:
+        condition: service_healthy
+    networks:
+      - web
+      - cache
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.familydoc.rule=Host(`${TRAEFIK_DOMAIN:-localhost}`)"
+      - "traefik.http.routers.familydoc.entrypoints=web"
+      - "traefik.http.services.familydoc.loadbalancer.server.port=8000"
+      - "traefik.http.routers.familydoc.middlewares=familydoc-strip"
+      - "traefik.http.middlewares.familydoc-strip.stripprefix.prefixes=/api"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Optional: Auto-update service
+  watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
     restart: unless-stopped
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-    command: ${COMMAND:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 300 --cleanup
+    networks:
+      - web
+    profiles:
+      - auto-update
 
 volumes:
-  redis_data: 
+  redis_data:
+    driver: local
+
+networks:
+  web:
+    driver: bridge
+  cache:
+    driver: bridge 

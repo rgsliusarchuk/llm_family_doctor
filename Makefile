@@ -18,9 +18,11 @@ help:
 	@echo ""
 	@echo "🐳 Docker & Deployment:"
 	@echo "  docker-build   Build Docker image"
+	@echo "  docker-push    Tag & push to ECR manually"
 	@echo "  docker-run     Run with Docker Compose"
 	@echo "  docker-test    Test Docker deployment"
-	@echo "  deploy-prod    Deploy to production via GitHub Actions"
+	@echo "  deploy-ci      Trigger CI/CD workflow"
+	@echo "  logs-prod      View production logs via SSH"
 	@echo ""
 	@echo "📊 Data & Index:"
 	@echo "  data-prep      Ingest PDF protocols to markdown"
@@ -33,6 +35,7 @@ help:
 	@echo "  test-cache     Test cache functionality"
 	@echo "  debug-cache    Debug cache without Redis"
 	@echo "  test-langchain Test LangChain integration"
+	@echo "  test-smoke     Run smoke tests for CI/CD"
 	@echo ""
 	@echo "🗄️  Database:"
 	@echo "  db-init        Create empty SQLite schema (alembic upgrade head if DB absent)"
@@ -142,6 +145,10 @@ test-langchain:
 	@echo "🔗 Testing LangChain integration..."
 	python tests/test_langchain_integration.py
 
+test-smoke:
+	@echo "🧪 Running smoke tests..."
+	python tests/test_smoke.py
+
 # Maintenance
 clean:
 	@echo "🧹 Cleaning up generated files..."
@@ -211,11 +218,31 @@ PY
 # -------------------------------------------------------------------------
 # 🐳 DOCKER & DEPLOYMENT TARGETS
 # -------------------------------------------------------------------------
-.PHONY: docker-build docker-run deploy-prod
+.PHONY: docker-build docker-push docker-run deploy-ci logs-prod
 
+# Build Docker image (accepts IMAGE arg, defaults to local)
 docker-build:
 	@echo "🐳 Building Docker image..."
-	docker build -t familydoc:dev .
+	@if [ -z "$(IMAGE)" ]; then \
+		docker build -t familydoc:dev .; \
+	else \
+		docker build -t $(IMAGE) .; \
+	fi
+
+# Tag and push to ECR manually
+docker-push:
+	@echo "🐳 Tagging and pushing to ECR..."
+	@if [ -z "$(TAG)" ]; then \
+		echo "❌ Please provide TAG=your_tag"; \
+		exit 1; \
+	fi
+	@if [ -z "$(ECR_REGISTRY)" ] || [ -z "$(ECR_REPOSITORY)" ]; then \
+		echo "❌ Please set ECR_REGISTRY and ECR_REPOSITORY in .env"; \
+		exit 1; \
+	fi
+	docker tag familydoc:dev $(ECR_REGISTRY)/$(ECR_REPOSITORY):$(TAG)
+	docker push $(ECR_REGISTRY)/$(ECR_REPOSITORY):$(TAG)
+	@echo "✅ Pushed $(ECR_REGISTRY)/$(ECR_REPOSITORY):$(TAG)"
 
 docker-run:
 	@echo "🐳 Running with Docker Compose..."
@@ -229,6 +256,16 @@ docker-test:
 	@echo "🧪 Testing Docker deployment..."
 	python test_deployment.py
 
-deploy-prod:
-	@echo "🚀 Triggering production deployment..."
-	gh workflow run deploy.yml 
+# Trigger CI/CD workflow manually
+deploy-ci:
+	@echo "🚀 Triggering CI/CD deployment..."
+	gh workflow run "Deploy to EC2"
+
+# View production logs via SSH
+logs-prod:
+	@echo "📋 Viewing production logs..."
+	@if [ -z "$(EC2_HOST)" ] || [ -z "$(EC2_USER)" ] || [ -z "$(EC2_SSH_KEY)" ]; then \
+		echo "❌ Please set EC2_HOST, EC2_USER, and EC2_SSH_KEY in .env"; \
+		exit 1; \
+	fi
+	ssh -i $(EC2_SSH_KEY) $(EC2_USER)@$(EC2_HOST) "cd /srv/familydoc && docker compose logs -f familydoc" 

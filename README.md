@@ -282,6 +282,52 @@ python tests/test_langchain_integration.py
 4. Ensure all tests pass
 5. Submit a pull request
 
+## 🚀 CI/CD to AWS EC2
+
+This project includes a complete CI/CD pipeline that automatically deploys to AWS EC2 after each push to the main branch.
+
+### 🔐 CI Secrets
+
+The following secrets must be configured in your GitHub repository settings:
+
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `AWS_ACCESS_KEY_ID` | AWS access key for ECR and EC2 access | `AKIA...` |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key for ECR and EC2 access | `...` |
+| `AWS_REGION` | AWS region for ECR repository | `us-east-1` |
+| `ECR_REPOSITORY` | ECR repository name | `familydoc` |
+| `EC2_HOST` | EC2 instance public IP or domain | `54.123.45.67` |
+| `EC2_USER` | SSH user for EC2 instance | `ubuntu` |
+| `EC2_SSH_KEY` | Private SSH key for EC2 access | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+
+### 🔄 Deployment Flow
+
+1. **Push to main** → Triggers GitHub Actions workflow
+2. **Build & Push** → Docker image built and pushed to ECR
+3. **Deploy** → SSH to EC2, pull new image, restart services
+4. **Health Check** → Verify deployment with health endpoint
+5. **Smoke Tests** → Run automated tests to ensure functionality
+
+### 🛠️ Manual Deployment
+
+```bash
+# Trigger deployment manually
+make deploy-ci
+
+# View production logs
+make logs-prod
+
+# Build and push image manually
+make docker-build IMAGE=your-ecr-repo:tag
+make docker-push TAG=your-tag
+```
+
+### 📊 Monitoring
+
+- **Traefik Dashboard**: Available at `http://your-domain:8080`
+- **Application Logs**: `make logs-prod`
+- **Health Endpoint**: `http://your-domain/health`
+
 ## 📄 License
 
 This project is licensed under the MIT License - see the LICENSE file for details.

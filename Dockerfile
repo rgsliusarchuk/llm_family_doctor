@@ -1,40 +1,32 @@
-# Multi-stage Dockerfile for LLM Family Doctor
-ARG TARGET=all
-FROM python:3.11-slim AS base
+# Production Dockerfile for LLM Family Doctor
+FROM python:3.11-slim AS runtime
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies (minimal set for runtime)
 RUN apt-get update && apt-get install -y \
-    git \
     curl \
     fonts-dejavu \
-    gcc \
-    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements and install Python dependencies with cache mount
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy project source
 COPY . .
 
+# Create non-root user for security
+RUN useradd --create-home --shell /bin/bash app && \
+    chown -R app:app /app
+USER app
+
 # Expose ports
-EXPOSE 8501 8000
+EXPOSE 8000 8501
 
-# Set default command based on target
-FROM base AS api
-CMD ["python", "start_api_server.py"]
-
-FROM base AS streamlit
-CMD ["python", "start_streamlit.py"]
-
-FROM base AS all
-CMD ["bash", "-c", "python start_api_server.py & python start_streamlit.py"]
-
-# Default target
-FROM all 
+# Default command
+CMD ["python", "start_api_server.py"] 
