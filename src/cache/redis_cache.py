@@ -38,4 +38,16 @@ async def get_md(key: str) -> Optional[str]:
 
 async def set_md(key: str, md: str) -> None:
     """Store answer with rolling TTL."""
-    await set(key, md) 
+    await set(key, md)
+
+async def clear_cache() -> None:
+    """Clear all data from Redis cache."""
+    r = await get_redis()
+    await r.flushall()
+
+async def clear_pattern(pattern: str = "*") -> None:
+    """Clear cache keys matching a pattern."""
+    r = await get_redis()
+    keys = await r.keys(pattern)
+    if keys:
+        await r.delete(*keys) 

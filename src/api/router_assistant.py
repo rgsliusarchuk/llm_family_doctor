@@ -2,7 +2,6 @@
 """Assistant router - façade endpoint for all user interactions."""
 from __future__ import annotations
 
-import httpx
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -110,7 +109,7 @@ async def handle_doctor_schedule(text: str, session: Session) -> Dict[str, Any]:
         "schedule": doctor.schedule
     }
 
-async def handle_diagnose(text: str, user_id: Optional[str], chat_id: Optional[str]) -> Dict[str, Any]:
+async def handle_diagnose(text: str, user_id: Optional[str], chat_id: Optional[str], session: Session) -> Dict[str, Any]:
     """Handle diagnosis requests by calling the existing diagnose endpoint."""
     # For diagnosis, we need to extract basic info from text
     # This is a simplified approach - in production, you might want more sophisticated parsing
@@ -140,26 +139,15 @@ async def handle_diagnose(text: str, user_id: Optional[str], chat_id: Optional[s
         symptoms=text
     )
     
-    # Call the existing diagnose function
-    # We'll use httpx to make an internal request to maintain separation
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "http://localhost:8000/diagnoses/",
-            json=diagnose_request.dict()
-        )
-        
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail="Diagnosis service error"
-            )
-        
-        result = response.json()
-        return {
-            "diagnosis": result["diagnosis"],
-            "cached": result["cached"],
-            "symptoms_hash": result["symptoms_hash"]
-        }
+    # Call the existing diagnose function directly instead of making HTTP request
+    from src.api.router_diagnose import diagnose
+    result = await diagnose(diagnose_request, session)
+    
+    return {
+        "diagnosis": result.diagnosis,
+        "cached": result.cached,
+        "symptoms_hash": result.symptoms_hash
+    }
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
@@ -184,10 +172,10 @@ async def handle_message(
         elif intent == IntentEnum.DOCTOR_SCHEDULE:
             data = await handle_doctor_schedule(request.text, session)
         elif intent == IntentEnum.DIAGNOSE:
-            data = await handle_diagnose(request.text, request.user_id, request.chat_id)
+            data = await handle_diagnose(request.text, request.user_id, request.chat_id, session)
         else:
             # Fallback to diagnose
-            data = await handle_diagnose(request.text, request.user_id, request.chat_id)
+            data = await handle_diagnose(request.text, request.user_id, request.chat_id, session)
             intent = IntentEnum.DIAGNOSE
         
         return AssistantResponse(

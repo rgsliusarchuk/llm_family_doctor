@@ -66,7 +66,7 @@ async def diagnose(
     symptoms_hash = _symptoms_hash(request.gender, request.age, guarded_symptoms)
     
     # ---------- exact cache ----------
-    if md := get_md(symptoms_hash):
+    if md := await get_md(symptoms_hash):
         return DiagnoseResponse(
             diagnosis=md, 
             cached=True,
@@ -92,7 +92,7 @@ async def diagnose(
     
     if cached_answer:
         # also prime exact Redis cache for next time
-        set_md(symptoms_hash, cached_answer.answer_md)
+        await set_md(symptoms_hash, cached_answer.answer_md)
         return DiagnoseResponse(
             diagnosis=cached_answer.answer_md,
             cached=True,
@@ -106,7 +106,7 @@ async def diagnose(
     guarded_response = guard_output(rag_result["response"])
     
     # store fresh answer to Redis with TTL (not yet approved)
-    set_md(symptoms_hash, guarded_response)
+    await set_md(symptoms_hash, guarded_response)
     
     return DiagnoseResponse(
         diagnosis=guarded_response,

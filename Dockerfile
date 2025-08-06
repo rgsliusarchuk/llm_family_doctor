@@ -1,4 +1,23 @@
 # Production Dockerfile for LLM Family Doctor
+FROM python:3.11-slim AS builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    gcc \
+    g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create virtual environment
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy requirements and install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
+
+# Runtime stage
 FROM python:3.11-slim AS runtime
 
 # Set environment variables
@@ -6,16 +25,15 @@ ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app
 
-# Install system dependencies (minimal set for runtime)
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
     fonts-dejavu \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies with cache mount
-COPY requirements.txt .
-RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --no-cache-dir -r requirements.txt
+# Copy virtual environment from builder stage
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy project source
 COPY . .

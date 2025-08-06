@@ -17,26 +17,26 @@ from src.models.intent_classifier import IntentEnum, classify_intent
 # Test Intent Classification
 # ─────────────────────────────────────────────────────────────────────────────
 
-@patch('src.models.intent_classifier.classifier_llm')
-def test_classify_intent_clinic_info(mock_llm):
+@patch('src.models.intent_classifier._chain')
+def test_classify_intent_clinic_info(mock_chain):
     """Test intent classification for clinic info."""
-    mock_llm.invoke.return_value = "clinic_info"
+    mock_chain.invoke.return_value = "clinic_info"
     
     result = classify_intent("Where is your clinic located?")
     assert result == IntentEnum.CLINIC_INFO
 
-@patch('src.models.intent_classifier.classifier_llm')
-def test_classify_intent_doctor_schedule(mock_llm):
+@patch('src.models.intent_classifier._chain')
+def test_classify_intent_doctor_schedule(mock_chain):
     """Test intent classification for doctor schedule."""
-    mock_llm.invoke.return_value = "doctor_schedule"
+    mock_chain.invoke.return_value = "doctor_schedule"
     
     result = classify_intent("When is Dr. Smith available?")
     assert result == IntentEnum.DOCTOR_SCHEDULE
 
-@patch('src.models.intent_classifier.classifier_llm')
-def test_classify_intent_diagnose(mock_llm):
+@patch('src.models.intent_classifier._chain')
+def test_classify_intent_diagnose(mock_chain):
     """Test intent classification for diagnose."""
-    mock_llm.invoke.return_value = "diagnose"
+    mock_chain.invoke.return_value = "diagnose"
     
     result = classify_intent("I have a headache")
     assert result == IntentEnum.DIAGNOSE

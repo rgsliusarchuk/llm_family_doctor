@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Reverse proxy
   reverse-proxy:
@@ -39,12 +37,21 @@ services:
       timeout: 10s
       retries: 3
 
-  # Main application
+  # Main application (Production mode by default)
   familydoc:
-    image: ${ECR_REGISTRY:-familydoc}:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: familydoc-app
     restart: unless-stopped
     env_file: .env
+    environment:
+      - REDIS_URL=redis://cache:6379/0
+      - REDIS_TTL_DAYS=30
+      - TRAEFIK_DOMAIN=localhost
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8000:8000"  # Direct access to API and docs
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
@@ -59,14 +66,49 @@ services:
       - "traefik.http.routers.familydoc.rule=Host(`${TRAEFIK_DOMAIN:-localhost}`)"
       - "traefik.http.routers.familydoc.entrypoints=web"
       - "traefik.http.services.familydoc.loadbalancer.server.port=8000"
-      - "traefik.http.routers.familydoc.middlewares=familydoc-strip"
-      - "traefik.http.middlewares.familydoc-strip.stripprefix.prefixes=/api"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
+    command: ["python", "start_api_server.py"]
+
+  # Debug version of the application
+  familydoc-debug:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: familydoc-app-debug
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://cache:6379/0
+      - REDIS_TTL_DAYS=30
+      - TRAEFIK_DOMAIN=localhost
+      - PYTHONUNBUFFERED=1
+    ports:
+      - "8001:8000"  # Debug API port
+      - "5678:5678"  # Debug port
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - .:/app  # Mount source code for live debugging
+    depends_on:
+      cache:
+        condition: service_healthy
+    networks:
+      - web
+      - cache
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "api_server.py"]
+    profiles:
+      - debug
 
   # Optional: Auto-update service
   watchtower:

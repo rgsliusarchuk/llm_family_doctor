@@ -43,4 +43,23 @@ def add_doc_to_index(text: str):
     _index.add(vec)
     
     # Add to texts list
-    _texts.append(text) 
+    _texts.append(text)
+
+def reset_semantic_index():
+    """Reset and reload the semantic index from the database."""
+    global _index, _texts
+    _index, _texts = _load_vectors()
+
+def clear_semantic_index():
+    """Clear the semantic index (set to empty)."""
+    global _index, _texts
+    _index = faiss.IndexFlatIP(_model.get_sentence_embedding_dimension())
+    _texts = []
+
+def get_semantic_index_stats():
+    """Get statistics about the semantic index."""
+    return {
+        "total_documents": _index.ntotal,
+        "dimension": _index.d,
+        "texts_count": len(_texts)
+    } 

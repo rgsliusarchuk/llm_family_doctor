@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     model_id: str = Field("intfloat/multilingual-e5-base", env="MODEL_ID")
     index_path: str = Field("data/faiss_index",              env="INDEX_PATH")
     map_path:   str = Field("data/doc_map.pkl",              env="MAP_PATH")
+    
+    # Telegram Bot configuration
+    telegram_bot_token: str = Field("", env="TELEGRAM_BOT_TOKEN")
 
     class Config:
         env_file = ".env"        # loads KEY=value pairs from repo root

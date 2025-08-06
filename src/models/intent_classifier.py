@@ -1,80 +1,80 @@
-#!/usr/bin/env python
-"""Intent classification for assistant messages."""
-from __future__ import annotations
+"""
+Intent classification for assistant messages (Ukrainian-first).
 
+We keep an ultra-light few-shot prompt and force the model to return
+exactly one of:
+    clinic_info | doctor_schedule | diagnose
+"""
+
+from __future__ import annotations
 from enum import Enum
 from typing import Literal
+
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 
 from src.config import settings
 
+# ─────────────────────────────────────────────────────────────────────────────
 class IntentEnum(str, Enum):
-    """Intent classification for user messages."""
-    CLINIC_INFO = "clinic_info"
+    CLINIC_INFO     = "clinic_info"
     DOCTOR_SCHEDULE = "doctor_schedule"
-    DIAGNOSE = "diagnose"
+    DIAGNOSE        = "diagnose"
 
-# LLM for intent classification
-classifier_llm = ChatOpenAI(
-    model="gpt-4.1-mini",
-    temperature=0.1,
-    api_key=settings.openai_api_key
+# ─────────── LLM setup ───────────────────────────────────────────────────────
+_llm = ChatOpenAI(
+    model=settings.openai_model,  # read from OPENAI_MODEL env var
+    temperature=0.0,
+    api_key=settings.openai_api_key,
 )
 
-# Few-shot prompt for intent classification
-INTENT_CLASSIFICATION_PROMPT = """You are an intent classifier for a medical assistant. Classify the user's message into one of three categories:
+# ─────────── Prompt ─────────────────────────────────────────────────────────
+_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        (
+            "system",
+            (
+                "You classify Ukrainian patient queries. "
+                "Return ONLY one token: clinic_info, doctor_schedule, or diagnose."
+            ),
+        ),
+        # ——— clinic_info ———
+        ("user", "Де знаходиться ваша клініка?"),
+        ("assistant", "clinic_info"),
+        ("user", "Який у вас номер телефону та години роботи?"),
+        ("assistant", "clinic_info"),
 
-1. **clinic_info** - Questions about clinic address, hours, phone, services, location
-2. **doctor_schedule** - Asking for doctor's full name, position, schedule, availability
-3. **diagnose** - Medical symptoms, health concerns, "I feel...", "I have...", "My child has..."
+        # ——— doctor_schedule ———
+        ("user", "Коли приймає доктор Іваненко?"),
+        ("assistant", "doctor_schedule"),
+        ("user", "Графік роботи лікаря 12?"),
+        ("assistant", "doctor_schedule"),
 
-Examples:
-- "Where is your clinic located?" → clinic_info
-- "What are your opening hours?" → clinic_info
-- "Can I see Dr. Smith's schedule?" → doctor_schedule
-- "When is Dr. Johnson available?" → doctor_schedule
-- "I have a headache" → diagnose
-- "My child has a fever" → diagnose
-- "I feel dizzy" → diagnose
+        # ——— diagnose ———
+        ("user", "У мене два дні температура 38 і кашель."),
+        ("assistant", "diagnose"),
+        ("user", "Моєму сину 5 років, болить живіт."),
+        ("assistant", "diagnose"),
 
-User message: {text}
+        # ——— runtime slot ———
+        ("user", "{text}"),
+    ]
+)
 
-Respond with ONLY the intent category (clinic_info, doctor_schedule, or diagnose):"""
+_chain = _PROMPT | _llm
 
-intent_prompt = ChatPromptTemplate.from_template(INTENT_CLASSIFICATION_PROMPT)
-
-def classify_intent(text: str) -> IntentEnum:
-    """
-    Classify user message intent using OpenAI.
-    
-    Args:
-        text: User message text
-        
-    Returns:
-        IntentEnum: Classified intent
-    """
+# ─────────── Public helper ───────────────────────────────────────────────────
+def classify_intent(text: str) -> IntentEnum:               # noqa: D401
+    """Return `IntentEnum` for the user message."""
     try:
-        # Create classification chain
-        chain = intent_prompt | classifier_llm
-        
-        # Get classification
-        result = chain.invoke({"text": text})
-        
-        # Clean and validate result
-        intent_str = result.strip().lower()
-        
-        # Map to enum
-        if intent_str == "clinic_info":
-            return IntentEnum.CLINIC_INFO
-        elif intent_str == "doctor_schedule":
-            return IntentEnum.DOCTOR_SCHEDULE
-        elif intent_str == "diagnose":
-            return IntentEnum.DIAGNOSE
-        else:
-            # Default to diagnose for unclear cases
-            return IntentEnum.DIAGNOSE
-            
+        # BREAKPOINT: Set a breakpoint here to debug the classification
+        response = _chain.invoke({"text": text})
+        # Extract content from AIMessage object
+        raw: str = response.content.strip().lower()
+        print(f"DEBUG: Raw LLM response for '{text}': '{raw}'")
+        return IntentEnum(raw)             # type: ignore[arg-type]
     except Exception as e:
-        # Default to diagnose on error
-        return IntentEnum.DIAGNOSE 
+        # Log the error for debugging
+        print(f"Intent classification error: {e}")
+        # Fallback – be safe and treat as medical question
+        return IntentEnum.DIAGNOSE

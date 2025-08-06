@@ -18,3 +18,5 @@ alembic>=1.13.1
 redis>=5.0.0            # Redis client for exact/semantic cache
 fastapi-utils>=0.2.1    # Router & CBV helpers
 guardrails-ai>=0.4.0    # I/O guardrails for LLM responses
+psutil>=5.9.0           # Explicit version to avoid build issues
+debugpy>=1.8.0          # Python debugger for VS Code/Cursor

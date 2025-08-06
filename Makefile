@@ -15,6 +15,9 @@ help:
 	@echo "  start-bot          Start Telegram bot"
 	@echo "  redis-start        Start Redis cache container"
 	@echo "  redis-stop         Stop Redis cache container"
+	@echo "  cache-reset        Reset ALL cache layers (Exact + Semantic + DB)"
+	@echo "  semantic-reset     Reset semantic cache only"
+	@echo "  semantic-clear     Clear semantic cache completely"
 	@echo ""
 	@echo "🐳 Docker & Deployment:"
 	@echo "  docker-build   Build Docker image"
@@ -87,6 +90,43 @@ redis-start:
 redis-stop:
 	@echo "🔴 Stopping Redis cache..."
 	docker stop redis-cache 2>/dev/null || echo "Redis not running"
+
+cache-reset:
+	@echo "🧹 Resetting ALL cache layers (Exact + Semantic)..."
+	@echo "🔴 Clearing Redis exact cache..."
+	docker exec redis-cache redis-cli FLUSHALL 2>/dev/null || echo "Redis not running"
+	@echo "🗄️  Clearing approved answers from database..."
+	sqlite3 data/clinic.db "DELETE FROM doctor_answer WHERE approved = 1;" 2>/dev/null || echo "Database not accessible"
+	@echo "🧠 Resetting semantic cache..."
+	@echo "🔄 Restarting application to reload empty semantic index..."
+	docker compose restart familydoc-app 2>/dev/null || echo "Docker compose not running"
+	@echo "✅ ALL cache layers reset complete!"
+	@echo "📊 Cache status:"
+	@echo "   • Redis exact cache: EMPTY"
+	@echo "   • Semantic cache: EMPTY"
+	@echo "   • Database approved answers: CLEARED"
+
+semantic-reset:
+	@echo "🧠 Resetting semantic cache..."
+	@echo "🔄 Restarting application to reload semantic index..."
+	docker compose restart familydoc-app 2>/dev/null || echo "Docker compose not running"
+	@echo "✅ Semantic cache reset complete!"
+
+semantic-clear:
+	@echo "🧠 Clearing semantic cache..."
+	@echo "🗄️  Clearing approved answers from database..."
+	sqlite3 data/clinic.db "DELETE FROM doctor_answer WHERE approved = 1;" 2>/dev/null || echo "Database not accessible"
+	@echo "🔄 Restarting application to reload empty semantic index..."
+	docker compose restart familydoc-app 2>/dev/null || echo "Docker compose not running"
+	@echo "✅ Semantic cache cleared!"
+
+semantic-stats:
+	@echo "📊 Getting semantic cache statistics..."
+	python scripts/reset_semantic_cache.py --stats
+
+cache-stats:
+	@echo "📊 Getting all cache statistics..."
+	python scripts/reset_all_cache.py --stats
 
 # Data preparation
 data-prep:
