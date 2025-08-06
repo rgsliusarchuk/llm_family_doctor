@@ -11,6 +11,9 @@ from src.db import get_session
 from src.db.models import Clinic, Doctor
 from src.models.intent_classifier import classify_intent, IntentEnum
 from src.api.router_diagnose import diagnose
+from langchain_openai import ChatOpenAI
+from langchain_core.prompts import ChatPromptTemplate
+from src.config import settings
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
 
@@ -24,8 +27,17 @@ class AssistantRequest(BaseModel):
     text: str
 
 class AssistantResponse(BaseModel):
-    intent: str  # "clinic_info", "doctor_schedule", "diagnose"
-    data: Dict[str, Any]
+    message: str  # Natural language response for the user
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LLM Setup for Response Generation
+# ─────────────────────────────────────────────────────────────────────────────
+
+_llm = ChatOpenAI(
+    model=settings.openai_model,
+    temperature=0.7,
+    api_key=settings.openai_api_key,
+)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Helper Functions
@@ -55,32 +67,63 @@ def extract_doctor_info(text: str) -> Optional[str]:
     
     return None
 
-async def handle_clinic_info(session: Session) -> Dict[str, Any]:
-    """Handle clinic information requests."""
+async def generate_clinic_info_response(clinic_data: Dict[str, Any]) -> str:
+    """Generate natural language response for clinic information."""
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a helpful medical clinic assistant. Respond in Ukrainian with a friendly, professional tone.
+        Provide clinic information in a natural, conversational way that would be suitable for a Telegram bot."""),
+        ("user", f"""Generate a natural response about clinic information based on this data:
+        Address: {clinic_data.get('address', 'Not available')}
+        Opening hours: {clinic_data.get('opening_hours', 'Not available')}
+        Services: {clinic_data.get('services', 'Not available')}
+        Phone: {clinic_data.get('phone', 'Not available')}
+        
+        Make it sound natural and helpful, as if you're talking to a patient."""),
+    ])
+    
+    chain = prompt | _llm
+    response = chain.invoke({})
+    return response.content
+
+async def generate_doctor_schedule_response(doctor_data: Dict[str, Any]) -> str:
+    """Generate natural language response for doctor schedule."""
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", """You are a helpful medical clinic assistant. Respond in Ukrainian with a friendly, professional tone.
+        Provide doctor schedule information in a natural, conversational way that would be suitable for a Telegram bot."""),
+        ("user", f"""Generate a natural response about doctor schedule based on this data:
+        Doctor name: {doctor_data.get('full_name', 'Not available')}
+        Position: {doctor_data.get('position', 'Not available')}
+        Schedule: {doctor_data.get('schedule', 'Not available')}
+        
+        Make it sound natural and helpful, as if you're talking to a patient."""),
+    ])
+    
+    chain = prompt | _llm
+    response = chain.invoke({})
+    return response.content
+
+async def handle_clinic_info(session: Session) -> str:
+    """Handle clinic information requests and return natural language response."""
     clinic = session.exec(select(Clinic).limit(1)).first()
     
     if not clinic:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Clinic information not available"
-        )
+        return "Вибачте, інформація про клініку зараз недоступна. Спробуйте пізніше або зверніться до адміністрації."
     
-    return {
+    clinic_data = {
         "address": clinic.address,
         "opening_hours": clinic.opening_hours,
         "services": clinic.services,
-        "phone": getattr(clinic, 'phone', None)  # Optional field
+        "phone": getattr(clinic, 'phone', None)
     }
+    
+    return await generate_clinic_info_response(clinic_data)
 
-async def handle_doctor_schedule(text: str, session: Session) -> Dict[str, Any]:
-    """Handle doctor schedule requests."""
+async def handle_doctor_schedule(text: str, session: Session) -> str:
+    """Handle doctor schedule requests and return natural language response."""
     doctor_info = extract_doctor_info(text)
     
     if not doctor_info:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="doctor_not_found"
-        )
+        return "Вибачте, не вдалося знайти інформацію про лікаря. Будь ласка, уточніть ім'я лікаря або його ID."
     
     # Try to find doctor by name or ID
     doctor = None
@@ -98,19 +141,18 @@ async def handle_doctor_schedule(text: str, session: Session) -> Dict[str, Any]:
         ).first()
     
     if not doctor:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="doctor_not_found"
-        )
+        return f"Вибачте, не знайдено лікаря з іменем або ID '{doctor_info}'. Перевірте правильність введених даних."
     
-    return {
+    doctor_data = {
         "full_name": doctor.full_name,
         "position": doctor.position,
         "schedule": doctor.schedule
     }
+    
+    return await generate_doctor_schedule_response(doctor_data)
 
-async def handle_diagnose(text: str, user_id: Optional[str], chat_id: Optional[str], session: Session) -> Dict[str, Any]:
-    """Handle diagnosis requests by calling the existing diagnose endpoint."""
+async def handle_diagnose(text: str, user_id: Optional[str], chat_id: Optional[str], session: Session) -> str:
+    """Handle diagnosis requests and return natural language response."""
     # For diagnosis, we need to extract basic info from text
     # This is a simplified approach - in production, you might want more sophisticated parsing
     
@@ -143,11 +185,8 @@ async def handle_diagnose(text: str, user_id: Optional[str], chat_id: Optional[s
     from src.api.router_diagnose import diagnose
     result = await diagnose(diagnose_request, session)
     
-    return {
-        "diagnosis": result.diagnosis,
-        "cached": result.cached,
-        "symptoms_hash": result.symptoms_hash
-    }
+    # Return the diagnosis message directly (assuming it's already in natural language)
+    return result.diagnosis
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
@@ -161,6 +200,7 @@ async def handle_message(
     """
     Main façade endpoint that handles all user messages.
     Classifies intent and dispatches to appropriate handler.
+    Returns natural language response suitable for Telegram bot.
     """
     # Classify user intent
     intent = classify_intent(request.text)
@@ -168,27 +208,21 @@ async def handle_message(
     try:
         # Dispatch based on intent
         if intent == IntentEnum.CLINIC_INFO:
-            data = await handle_clinic_info(session)
+            message = await handle_clinic_info(session)
         elif intent == IntentEnum.DOCTOR_SCHEDULE:
-            data = await handle_doctor_schedule(request.text, session)
+            message = await handle_doctor_schedule(request.text, session)
         elif intent == IntentEnum.DIAGNOSE:
-            data = await handle_diagnose(request.text, request.user_id, request.chat_id, session)
+            message = await handle_diagnose(request.text, request.user_id, request.chat_id, session)
         else:
             # Fallback to diagnose
-            data = await handle_diagnose(request.text, request.user_id, request.chat_id, session)
-            intent = IntentEnum.DIAGNOSE
+            message = await handle_diagnose(request.text, request.user_id, request.chat_id, session)
         
-        return AssistantResponse(
-            intent=intent.value,
-            data=data
-        )
+        return AssistantResponse(message=message)
         
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
         # Handle other errors gracefully
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Internal server error: {str(e)}"
-        ) 
+        error_message = "Вибачте, сталася помилка при обробці вашого запиту. Спробуйте ще раз або зверніться до адміністрації."
+        return AssistantResponse(message=error_message) 
