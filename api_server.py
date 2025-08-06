@@ -61,7 +61,7 @@ app = FastAPI(
 app.include_router(clinic_router)
 app.include_router(doctors_router)
 app.include_router(diagnose_router)               # /diagnoses
-app.include_router(doctor_answers_router)         # /doctor_answers
+app.include_router(doctor_answers_router)         # /knowledge-base
 app.include_router(intake_router)                 # /intake
 app.include_router(doctor_review_router)          # /doctor_review
 app.include_router(assistant_router)              # /assistant

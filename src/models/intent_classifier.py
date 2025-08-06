@@ -43,11 +43,25 @@ _PROMPT = ChatPromptTemplate.from_messages(
         ("assistant", "clinic_info"),
         ("user", "Який у вас номер телефону та години роботи?"),
         ("assistant", "clinic_info"),
+        ("user", "Які години роботи клініки?"),
+        ("assistant", "clinic_info"),
+        ("user", "Які послуги надає клініка?"),
+        ("assistant", "clinic_info"),
+        ("user", "Адреса клініки?"),
+        ("assistant", "clinic_info"),
 
         # ——— doctor_schedule ———
         ("user", "Коли приймає доктор Іваненко?"),
         ("assistant", "doctor_schedule"),
         ("user", "Графік роботи лікаря 12?"),
+        ("assistant", "doctor_schedule"),
+        ("user", "Чи є у вас лікар педіатр?"),
+        ("assistant", "doctor_schedule"),
+        ("user", "Які лікарі у вас працюють?"),
+        ("assistant", "doctor_schedule"),
+        ("user", "Чи є у вас сімейний лікар?"),
+        ("assistant", "doctor_schedule"),
+        ("user", "Хто з лікарів приймає дітей?"),
         ("assistant", "doctor_schedule"),
 
         # ——— diagnose ———

@@ -44,7 +44,7 @@ RUN useradd --create-home --shell /bin/bash app && \
 USER app
 
 # Expose ports
-EXPOSE 8000 8501
+EXPOSE 8000 8501 5678
 
 # Default command
 CMD ["python", "start_api_server.py"] 

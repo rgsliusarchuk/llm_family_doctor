@@ -62,10 +62,16 @@ def _validate_doctor(doctor_id: int, session: Session) -> Doctor:
     
     return doctor
 
-def _update_caches(symptoms_hash: str, answer_md: str):
+async def _update_caches(symptoms_hash: str, answer_md: str):
     """Update all caches with new answer."""
     # Update Redis cache
-    set_md(symptoms_hash, answer_md)
+    await set_md(symptoms_hash, answer_md)
+    
+    # Extract and store patient response
+    from src.utils import extract_patient_response
+    from src.cache.redis_cache import set_diagnosis_with_patient_response
+    patient_response = extract_patient_response(answer_md)
+    await set_diagnosis_with_patient_response(symptoms_hash, answer_md, patient_response)
     
     # Update semantic index
     add_doc_to_index(answer_md)
@@ -99,13 +105,13 @@ async def approve_diagnosis(
         
         # Get the answer content from Redis cache
         from src.cache.redis_cache import get_md
-        cached_answer = get_md(request_id)
+        cached_answer = await get_md(request_id)
         if cached_answer:
             doctor_answer.answer_md = cached_answer
     else:
         # Create new approved answer
         from src.cache.redis_cache import get_md
-        cached_answer = get_md(request_id)
+        cached_answer = await get_md(request_id)
         
         if not cached_answer:
             raise HTTPException(
@@ -127,7 +133,7 @@ async def approve_diagnosis(
     session.refresh(doctor_answer)
     
     # Update caches
-    _update_caches(request_id, doctor_answer.answer_md)
+    await _update_caches(request_id, doctor_answer.answer_md)
     
     return ReviewResponse(
         request_id=request_id,
@@ -178,7 +184,7 @@ async def edit_diagnosis(
     session.refresh(doctor_answer)
     
     # Update caches
-    _update_caches(request_id, doctor_answer.answer_md)
+    await _update_caches(request_id, doctor_answer.answer_md)
     
     return ReviewResponse(
         request_id=request_id,

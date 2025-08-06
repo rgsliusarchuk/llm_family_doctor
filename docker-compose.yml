@@ -50,11 +50,14 @@ services:
       - REDIS_TTL_DAYS=30
       - TRAEFIK_DOMAIN=localhost
       - PYTHONUNBUFFERED=1
+      - DEBUG_MODE=${DEBUG_MODE:-false}
     ports:
       - "8000:8000"  # Direct access to API and docs
+      - "5678:5678"  # Debug port (only used when DEBUG_MODE=true)
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
+      - .:/app  # Mount source code for live debugging when in debug mode
     depends_on:
       cache:
         condition: service_healthy
@@ -72,43 +75,47 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    command: ["python", "start_api_server.py"]
+    command: >
+      sh -c "
+        if [ \"$$DEBUG_MODE\" = \"true\" ]; then
+          echo '🐛 Starting in DEBUG mode...';
+          python -Xfrozen_modules=off -m debugpy --listen 0.0.0.0:5678 --wait-for-client api_server.py;
+        else
+          echo '🚀 Starting in PRODUCTION mode...';
+          python start_api_server.py;
+        fi
+      "
 
-  # Debug version of the application
-  familydoc-debug:
+  # Telegram Bot Service
+  telegram-bot:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: familydoc-app-debug
+    container_name: familydoc-telegram-bot
     restart: unless-stopped
     env_file: .env
     environment:
+      - API_BASE_URL=http://familydoc:8000
       - REDIS_URL=redis://cache:6379/0
       - REDIS_TTL_DAYS=30
-      - TRAEFIK_DOMAIN=localhost
       - PYTHONUNBUFFERED=1
-    ports:
-      - "8001:8000"  # Debug API port
-      - "5678:5678"  # Debug port
     volumes:
       - ./data:/app/data
       - ./logs:/app/logs
-      - .:/app  # Mount source code for live debugging
+      - .:/app
     depends_on:
-      cache:
+      familydoc:
         condition: service_healthy
     networks:
       - web
       - cache
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://familydoc:8000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    command: ["python", "-m", "debugpy", "--listen", "0.0.0.0:5678", "--wait-for-client", "api_server.py"]
-    profiles:
-      - debug
+    command: python telegram_bot.py
 
   # Optional: Auto-update service
   watchtower:

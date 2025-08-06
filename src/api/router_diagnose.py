@@ -105,8 +105,13 @@ async def diagnose(
     # Apply output guardrails
     guarded_response = guard_output(rag_result["response"])
     
-    # store fresh answer to Redis with TTL (not yet approved)
-    await set_md(symptoms_hash, guarded_response)
+    # Extract patient response section
+    from src.utils import extract_patient_response
+    patient_response = extract_patient_response(guarded_response)
+    
+    # store both full diagnosis and patient response to Redis with TTL (not yet approved)
+    from src.cache.redis_cache import set_diagnosis_with_patient_response
+    await set_diagnosis_with_patient_response(symptoms_hash, guarded_response, patient_response)
     
     return DiagnoseResponse(
         diagnosis=guarded_response,

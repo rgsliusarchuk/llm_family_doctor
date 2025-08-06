@@ -18,6 +18,10 @@ class Settings(BaseSettings):
     
     # Telegram Bot configuration
     telegram_bot_token: str = Field("", env="TELEGRAM_BOT_TOKEN")
+    doctor_group_id: str = Field("", env="DOCTOR_GROUP_ID")
+    
+    # Debug configuration
+    debug_mode: bool = Field(False, env="DEBUG_MODE")
 
     class Config:
         env_file = ".env"        # loads KEY=value pairs from repo root

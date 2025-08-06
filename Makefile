@@ -12,7 +12,10 @@ help:
 	@echo "🚀 Start Services:"
 	@echo "  start-streamlit    Start Streamlit web interface"
 	@echo "  start-api          Start API server"
-	@echo "  start-bot          Start Telegram bot"
+	@echo "  start-api-debug    Start API server in DEBUG mode"
+	@echo "  start-bot          Start Telegram bot (local)"
+	@echo "  start-bot-docker   Start Telegram bot (Docker)"
+	@echo "  stop-bot-docker    Stop Telegram bot (Docker)"
 	@echo "  redis-start        Start Redis cache container"
 	@echo "  redis-stop         Stop Redis cache container"
 	@echo "  cache-reset        Reset ALL cache layers (Exact + Semantic + DB)"
@@ -22,9 +25,10 @@ help:
 	@echo "🐳 Docker & Deployment:"
 	@echo "  docker-build   Build Docker image"
 	@echo "  docker-push    Tag & push to ECR manually"
-	@echo "  docker-run     Run with Docker Compose"
+	@echo "  docker-run     Run with Docker Compose (uses DEBUG_MODE from .env)"
 	@echo "  docker-test    Test Docker deployment"
 	@echo "  deploy-ci      Trigger CI/CD workflow"
+	@echo "  deploy-ec2     Deploy to EC2 manually"
 	@echo "  logs-prod      View production logs via SSH"
 	@echo ""
 	@echo "📊 Data & Index:"
@@ -50,6 +54,7 @@ help:
 	@echo "🧹 Maintenance:"
 	@echo "  clean          Clean up generated files"
 	@echo "  logs           View recent logs"
+	@echo "  logs-bot       View Telegram bot logs"
 
 # Setup commands
 install:
@@ -78,9 +83,24 @@ start-api:
 	@echo "📚 API docs at: http://localhost:8000/docs"
 	python start_api_server.py
 
+start-api-debug:
+	@echo "🐛 Starting API server in DEBUG mode..."
+	@echo "🌐 Available at: http://localhost:8000"
+	@echo "📚 API docs at: http://localhost:8000/docs"
+	@echo "🔧 Debug port: 5678"
+	DEBUG_MODE=true python -m debugpy --listen 0.0.0.0:5678 --wait-for-client api_server.py
+
 start-bot:
 	@echo "🤖 Starting Telegram bot..."
-	python telegram_bot_example.py
+	python telegram_bot.py
+
+start-bot-docker:
+	@echo "🤖 Starting Telegram bot in Docker..."
+	docker compose up telegram-bot -d
+
+stop-bot-docker:
+	@echo "🤖 Stopping Telegram bot in Docker..."
+	docker compose stop telegram-bot
 
 redis-start:
 	@echo "🔴 Starting Redis cache..."
@@ -205,6 +225,10 @@ logs:
 		echo "No logs directory found"; \
 	fi
 
+logs-bot:
+	@echo "🤖 Telegram bot logs:"
+	docker compose logs -f telegram-bot
+
 # Development helpers
 dev-setup: install setup-env
 	@echo "✅ Development environment setup complete"
@@ -300,6 +324,16 @@ docker-test:
 deploy-ci:
 	@echo "🚀 Triggering CI/CD deployment..."
 	gh workflow run "Deploy to EC2"
+
+# Deploy to EC2 manually
+deploy-ec2:
+	@echo "🚀 Deploying to EC2..."
+	@if [ -z "$(EC2_HOST)" ] || [ -z "$(EC2_USER)" ] || [ -z "$(EC2_SSH_KEY)" ]; then \
+		echo "❌ Please set EC2_HOST, EC2_USER, and EC2_SSH_KEY in .env"; \
+		exit 1; \
+	fi
+	scp -i $(EC2_SSH_KEY) scripts/deploy_ec2.sh $(EC2_USER)@$(EC2_HOST):/srv/familydoc/
+	ssh -i $(EC2_SSH_KEY) $(EC2_USER)@$(EC2_HOST) "cd /srv/familydoc && chmod +x deploy_ec2.sh && ./deploy_ec2.sh"
 
 # View production logs via SSH
 logs-prod:
