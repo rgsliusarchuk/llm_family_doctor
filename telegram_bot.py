@@ -24,6 +24,11 @@ load_dotenv()
 # ── Configuration ───────────────────────────────────────────────────────────
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
+# New → where to push every fresh diagnosis for review
+DOCTOR_GROUP_ID = int(os.getenv("DOCTOR_GROUP_ID", "-1"))
+
+# Keep track of which diagnosis-hash we posted in the group
+diagnosis_message_map: Dict[str, int] = {}
 
 # ── Configure logging ───────────────────────────────────────────────────────
 logging.basicConfig(
@@ -79,6 +84,28 @@ class APIClient:
                         return None
         except Exception as e:
             logger.error(f"Error calling API: {e}")
+            return None
+    
+    async def approve_diagnosis(self, request_id: str, doctor_id: int) -> Optional[dict]:
+        """Approve a diagnosis via the doctor review endpoint."""
+        try:
+            payload = {
+                "doctor_id": doctor_id
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/doctor_review/{request_id}/approve",
+                    json=payload
+                ) as response:
+                    if response.status == 200:
+                        return await response.json()
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"API error: {response.status} - {error_text}")
+                        return None
+        except Exception as e:
+            logger.error(f"Error calling approve API: {e}")
             return None
 
 # Global API client
@@ -224,13 +251,27 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
         
-        # Send diagnosis with doctor review buttons
+        # ① Send to the patient chat
         await update.message.reply_text(
             f"🩺 **Попередній діагноз:**\n\n{diagnosis}\n\n"
             f"⚠️ Це лише попередній діагноз. Консультуйтесь з лікарем.",
             reply_markup=reply_markup,
             parse_mode='Markdown'
         )
+
+        # ② Forward the same card to doctors' group for review
+        if DOCTOR_GROUP_ID != -1:
+            group_msg = await context.bot.send_message(
+                chat_id=DOCTOR_GROUP_ID,
+                text=(
+                    f"👨‍⚕️ *Нове авто-згенероване заключення* "
+                    f"(hash: `{symptoms_hash}`)\n\n{diagnosis}"
+                ),
+                reply_markup=reply_markup,
+                parse_mode='Markdown'
+            )
+            # Remember where the diagnosis lives in the group chat
+            diagnosis_message_map[symptoms_hash] = group_msg.message_id
     
     else:
         # Fallback for unknown intent
@@ -248,11 +289,18 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     doctor_id = 1  # Default doctor ID
     
     if action == "approve":
-        # Approve the diagnosis
-        # Note: This would need to be implemented in the assistant router
-        await query.edit_message_text(
-            "✅ Діагноз схвалено лікарем!"
-        )
+        # (a) tell backend
+        await api_client.approve_diagnosis(request_id, doctor_id)
+        # (b) update patient message
+        await query.edit_message_text("✅ Діагноз схвалено лікарем!")
+        # (c) update group message, if we know its id
+        if DOCTOR_GROUP_ID != -1 and request_id in diagnosis_message_map:
+            await context.bot.edit_message_text(
+                chat_id=DOCTOR_GROUP_ID,
+                message_id=diagnosis_message_map[request_id],
+                text="✅ *Схвалено лікарем*\n\n" + query.message.text,
+                parse_mode='Markdown'
+            )
     
     elif action == "edit":
         # For editing, we'll need to implement a more complex flow
