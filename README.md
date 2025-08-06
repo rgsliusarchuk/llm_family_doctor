@@ -5,6 +5,8 @@ Single-repo for data-prep **and** Streamlit UI.
 * **data-prep** → `notebooks/data_prep.ipynb` (Google Colab badge below)
 * **app**      → `app.py` (run locally or on Streamlit Cloud)
 * **testing**  → `tests/test_index.py` (comprehensive index testing)
+* **api**      → `api_server.py` (FastAPI server with assistant façade endpoint)
+* **telegram** → `telegram_bot.py` (original bot) / `telegram_bot_example.py` (new simplified bot)
 
 [![Run data prep in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rgsliusarchuk/llm_family_doctor/blob/master/notebooks/data_prep.ipynb)
 
@@ -242,16 +244,79 @@ mkdir -p data/raw_pdfs data/protocols logs
 3. **Start App**: Run `streamlit run app.py` (index builds automatically on first run)
 4. **Test** (Optional): Run `python tests/test_index.py` for comprehensive testing
 
+### API Server with Assistant Façade
+```bash
+# Start the FastAPI server
+python api_server.py
+
+# The server provides a unified assistant endpoint at /assistant/message
+# that handles all user interactions through intent classification
+```
+
+### Telegram Bots
+```bash
+# Option 1: Original bot with detailed workflow
+python telegram_bot.py
+# - Collects detailed patient information (gender, age, doctor selection)
+# - Uses multiple API endpoints directly
+# - More sophisticated state machine
+
+# Option 2: New simplified bot using assistant façade
+python telegram_bot_example.py
+# - Uses single /assistant/message endpoint
+# - Automatic intent classification
+# - Simplified user interaction
+```
+
 ### Advanced Testing
 ```bash
 # Run comprehensive tests
 python tests/test_index.py
+
+# Test the assistant router
+python -m pytest tests/test_assistant_router.py
 
 # Debug vector store issues
 python tests/debug_vector_store.py
 
 # Test LangChain integration
 python tests/test_langchain_integration.py
+```
+
+## 🤖 Assistant Façade Endpoint
+
+The new `/assistant/message` endpoint provides a unified interface for all user interactions:
+
+### Features
+- **Intent Classification**: Automatically classifies user messages into three categories:
+  - `clinic_info` - Questions about clinic address, hours, phone, services
+  - `doctor_schedule` - Requests for doctor availability and schedule
+  - `diagnose` - Medical symptoms and health concerns
+
+- **Smart Dispatching**: Routes requests to appropriate handlers based on intent
+- **Error Handling**: Graceful fallback to diagnosis for unclear requests
+- **Telegram Integration**: Simplified bot implementation using single endpoint
+
+### API Usage
+```bash
+# Example request
+curl -X POST "http://localhost:8000/assistant/message" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Where is your clinic located?",
+    "user_id": "user123",
+    "chat_id": "chat456"
+  }'
+
+# Example response
+{
+  "intent": "clinic_info",
+  "data": {
+    "address": "123 Medical St, Kyiv",
+    "opening_hours": "Mon-Fri 08:00-18:00",
+    "services": "General practice, Pediatrics, Emergency care"
+  }
+}
 ```
 
 ## 🐛 Troubleshooting
