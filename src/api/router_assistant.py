@@ -55,8 +55,12 @@ def _get_conversation_state(user_id: str, chat_id: str) -> Dict[str, Any]:
 
 def _save_conversation_state(user_id: str, chat_id: str, state: Dict[str, Any]):
     """Save conversation state for user/chat."""
+    import logging
+    logger = logging.getLogger(__name__)
     key = f"{user_id}:{chat_id}"
     _conversation_states[key] = state
+    logger.info(f"Saved conversation state with key '{key}': {state}")
+    logger.info(f"Total conversation states: {len(_conversation_states)}")
 
 def _clear_conversation_state(user_id: str, chat_id: str):
     """Clear conversation state for user/chat."""
@@ -79,10 +83,10 @@ def _extract_patient_info(text: str) -> tuple[Optional[str], Optional[int]]:
     logger.info(f"Extracting patient info from text: '{text}' (lower: '{text_lower}')")
     
     # Extract gender
-    if any(word in text_lower for word in ["жінка", "дівчина", "донька", "доньці", "female", "woman", "girl"]):
+    if any(word in text_lower for word in ["жінка", "дівчина", "донька", "доньці", "жіноча", "female", "woman", "girl"]):
         gender = "f"
         logger.info(f"Extracted gender: {gender}")
-    elif any(word in text_lower for word in ["чоловік", "хлопець", "син", "хлопчик", "male", "man", "boy"]):
+    elif any(word in text_lower for word in ["чоловік", "хлопець", "син", "хлопчик", "чоловіча", "male", "man", "boy"]):
         gender = "m"
         logger.info(f"Extracted gender: {gender}")
     
@@ -94,7 +98,8 @@ def _extract_patient_info(text: str) -> tuple[Optional[str], Optional[int]]:
         r'вік\s*(\d+)',
         r'age\s*(\d+)',
         r'(\d+)\s*рік',
-        r'(\d+)\s*року'
+        r'(\d+)\s*року',
+        r'(\d+)\s*років'  # Explicit pattern for "років"
     ]
     
     for pattern in age_patterns:
@@ -103,6 +108,8 @@ def _extract_patient_info(text: str) -> tuple[Optional[str], Optional[int]]:
             age = int(match.group(1))
             logger.info(f"Extracted age: {age} using pattern: {pattern}")
             break
+        else:
+            logger.debug(f"Pattern '{pattern}' did not match text: '{text_lower}'")
     
     logger.info(f"Final extraction result: gender={gender}, age={age}")
     return gender, age
@@ -451,14 +458,19 @@ async def _handle_info_collection(
     
     # Try to extract gender and age from the response
     gender, age = _extract_patient_info(text)
+    logger.info(f"Extracted from response: gender={gender}, age={age}")
     
     # Update state with any new information
     if gender and state.get("missing_gender"):
         state["extracted_gender"] = gender
         state["missing_gender"] = False
+        logger.info(f"Updated state with gender: {gender}")
     if age and state.get("missing_age"):
         state["extracted_age"] = age
         state["missing_age"] = False
+        logger.info(f"Updated state with age: {age}")
+    
+    logger.info(f"Updated state: {state}")
     
     # Check if we now have all required information
     if not state.get("missing_gender") and not state.get("missing_age"):
@@ -495,6 +507,7 @@ async def _handle_info_collection(
     
     # Save updated state
     _save_conversation_state(user_id, chat_id, state)
+    logger.info(f"Saved conversation state for {user_id}:{chat_id}: {state}")
     
     # Generate message asking for remaining info
     if len(missing_info) == 2:

@@ -27,8 +27,7 @@ services:
     restart: unless-stopped
     volumes:
       - redis_data:/data
-      - ./logs/redis:/var/log/redis
-    command: redis-server --appendonly yes --logfile /var/log/redis/redis.log
+    command: redis-server --appendonly yes
     networks:
       - cache
     healthcheck:

@@ -43,7 +43,8 @@ async def handle_edited_diagnosis(update: Update, context: ContextTypes.DEFAULT_
         
         if result:
             # Clear the editing state
-            del context.bot.editing_states[user_id]
+            if 'editing_state' in context.user_data:
+                del context.user_data['editing_state']
             
             # Send confirmation to the doctor
             await update.message.reply_text(
@@ -80,8 +81,8 @@ async def handle_edited_diagnosis(update: Update, context: ContextTypes.DEFAULT_
         await update.message.reply_text("❌ Помилка обробки відредагованого діагнозу. Спробуйте ще раз.")
         
         # Clear the editing state on error
-        if user_id in context.bot.editing_states:
-            del context.bot.editing_states[user_id]
+        if 'editing_state' in context.user_data:
+            del context.user_data['editing_state']
 
 # ── Load environment variables ───────────────────────────────────────────────
 load_dotenv()
@@ -321,8 +322,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     logger.info(f"Received message from user {user_id} in chat {chat_id}: '{message_text}'")
     
     # Check if this is a doctor editing a diagnosis
-    if hasattr(context.bot, 'editing_states') and user_id in context.bot.editing_states:
-        editing_state = context.bot.editing_states[user_id]
+    if 'editing_state' in context.user_data:
+        editing_state = context.user_data['editing_state']
         
         if editing_state.get("action") == "editing_diagnosis":
             # Handle edited diagnosis
@@ -565,12 +566,8 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     "doctor_id": doctor_id
                 }
                 
-                # Store editing state (you might want to use a more persistent storage)
-                # For now, we'll use a simple in-memory approach
-                if not hasattr(context.bot, 'editing_states'):
-                    context.bot.editing_states = {}
-                
-                context.bot.editing_states[query.from_user.id] = editing_state
+                # Store editing state in context.user_data for this specific user
+                context.user_data['editing_state'] = editing_state
                 
                 await query.edit_message_text(edit_message, parse_mode='Markdown')
             else:
@@ -595,12 +592,12 @@ async def error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.error(f"Error type: {context.error.__class__.__name__}")
     
     # If it's a callback query error, log the callback data
-    if update.callback_query:
+    if update and update.callback_query:
         logger.error(f"Callback query data: {update.callback_query.data}")
         logger.error(f"Callback query from user: {update.callback_query.from_user.id}")
     
     # If it's a message error, log the message text
-    if update.message:
+    if update and update.message:
         logger.error(f"Message text: {update.message.text}")
         logger.error(f"Message from user: {update.message.from_user.id}")
 

@@ -48,6 +48,12 @@ def extract_patient_response(full_diagnosis: str) -> str:
             # Join lines and clean up
             patient_response = '\n'.join(lines).strip()
             
+            # Clean up artifacts
+            patient_response = re.sub(r'\n*---+\n*$', '', patient_response)  # Remove trailing dashes
+            patient_response = re.sub(r'^\n*---+\n*', '', patient_response)  # Remove leading dashes
+            patient_response = re.sub(r'\n{3,}', '\n\n', patient_response)  # Normalize multiple newlines
+            patient_response = patient_response.strip()
+            
             # If we got a meaningful response, return it
             if patient_response and len(patient_response) > 10:
                 logger.info(f"Successfully extracted patient response using pattern {i+1}")
@@ -72,6 +78,12 @@ def extract_patient_response(full_diagnosis: str) -> str:
             clean_section = re.sub(r'^#+\s*', '', section)  # Remove headers
             clean_section = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_section)  # Remove bold
             clean_section = re.sub(r'\*(.*?)\*', r'\1', clean_section)  # Remove italic
+            
+            # Clean up artifacts
+            clean_section = re.sub(r'\n*---+\n*$', '', clean_section)  # Remove trailing dashes
+            clean_section = re.sub(r'^\n*---+\n*', '', clean_section)  # Remove leading dashes
+            clean_section = re.sub(r'\n{3,}', '\n\n', clean_section)  # Normalize multiple newlines
+            clean_section = clean_section.strip()
             
             if clean_section and len(clean_section) > 20:
                 logger.info("Created simplified patient response from first suitable section")
@@ -143,6 +155,11 @@ def extract_patient_response(full_diagnosis: str) -> str:
             clean_sentence = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_sentence)  # Remove bold
             clean_sentence = re.sub(r'\*(.*?)\*', r'\1', clean_sentence)  # Remove italic
             
+            # Clean up artifacts
+            clean_sentence = re.sub(r'\n*---+\n*$', '', clean_sentence)  # Remove trailing dashes
+            clean_sentence = re.sub(r'^\n*---+\n*', '', clean_sentence)  # Remove leading dashes
+            clean_sentence = clean_sentence.strip()
+            
             if len(clean_sentence) > 15 and len(clean_sentence) < 200:
                 logger.info("Created generic response from helpful content")
                 return clean_sentence + '.'
@@ -162,6 +179,11 @@ def extract_patient_response(full_diagnosis: str) -> str:
         clean_sentence = re.sub(r'^[-•]\s*', '', sentence)  # Remove bullet points
         clean_sentence = re.sub(r'\*\*(.*?)\*\*', r'\1', clean_sentence)  # Remove bold
         clean_sentence = re.sub(r'\*(.*?)\*', r'\1', clean_sentence)  # Remove italic
+        
+        # Clean up artifacts
+        clean_sentence = re.sub(r'\n*---+\n*$', '', clean_sentence)  # Remove trailing dashes
+        clean_sentence = re.sub(r'^\n*---+\n*', '', clean_sentence)  # Remove leading dashes
+        clean_sentence = clean_sentence.strip()
         
         if len(clean_sentence) > 15:
             logger.info("Created response from sentence with minimal medical terms")
