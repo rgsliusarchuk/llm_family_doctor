@@ -5,6 +5,8 @@ Single-repo for data-prep **and** Streamlit UI.
 * **data-prep** → `notebooks/data_prep.ipynb` (Google Colab badge below)
 * **app**      → `app.py` (run locally or on Streamlit Cloud)
 * **testing**  → `tests/test_index.py` (comprehensive index testing)
+* **api**      → `api_server.py` (FastAPI server with assistant façade endpoint)
+* **telegram** → `telegram_bot.py` (original bot) / `telegram_bot_example.py` (new simplified bot)
 
 [![Run data prep in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/rgsliusarchuk/llm_family_doctor/blob/master/notebooks/data_prep.ipynb)
 
@@ -27,12 +29,18 @@ pip install -r requirements.txt
 # Copy environment template and add your API keys
 cp env.template .env          # then open .env and paste your keys
 
+# Set up local directories
+make local-setup
+
 # Add PDF files to data/raw_pdfs/
 # Then run the data preparation pipeline:
-python scripts/ingest_protocol.py --dir data/raw_pdfs --recursive
+make local-update
+
+# Start Redis cache (optional but recommended for production)
+make redis-start
 
 # Start the app (it will build the index automatically on first run)
-streamlit run app.py
+make start-streamlit
 ```
 
 ## 📊 Data Preparation Pipeline
@@ -118,14 +126,12 @@ The Streamlit app automatically handles index building on first startup:
 
 This project now supports **LangChain** and **LangSmith** for enhanced RAG capabilities and monitoring:
 
-### Features Added:
+### Features:
 - **LangChain RAG Pipeline**: Structured retrieval and generation using LangChain components
 - **LangSmith Tracing**: Monitor and debug your RAG pipeline in real-time
 - **Enhanced Vector Store**: Better document handling with metadata
-- **Backward Compatibility**: Original implementation still works if LangChain is not available
 
-### New Components:
-- `src/models/llm_client.py` - LLM client with embedding and response generation
+### Components:
 - `src/models/langchain_vector_store.py` - Enhanced vector store with Document objects
 - `src/models/rag_chain.py` - Complete RAG pipeline using LangChain
 
@@ -144,6 +150,42 @@ This project now supports **LangChain** and **LangSmith** for enhanced RAG capab
 - **Experimentation**: A/B test different prompts and retrieval strategies
 - **Production Ready**: Better error handling and observability
 
+## 🔄 Caching System
+
+The application implements a multi-layer caching system for optimal performance:
+
+### Cache Layers:
+1. **Exact Cache (Redis)**: SHA-256 hash of `gender|age|symptoms` → markdown answer
+2. **Semantic Cache (FAISS)**: In-memory index of approved doctor answers
+3. **Database Cache**: Approved answers stored in SQLite
+
+### Cache Flow:
+1. Check exact cache first (fastest)
+2. Check semantic cache for similar symptoms
+3. Check database for approved answers
+4. Generate new answer via RAG if no cache hit
+
+### Setup Redis Cache:
+```bash
+# Start Redis container
+make redis-start
+
+# Stop Redis container
+make redis-stop
+
+# Environment variables (optional)
+REDIS_URL=redis://localhost:6379/0
+REDIS_TTL_DAYS=30
+```
+
+### Benefits:
+- **Performance**: Sub-second response times for cached queries
+- **Cost Reduction**: Fewer LLM API calls
+- **Consistency**: Approved answers are reused
+- **Scalability**: Redis handles high concurrent load
+
+
+
 ## 📁 Project Structure
 
 ```
@@ -161,12 +203,17 @@ llm_family_doctor/
 ├── scripts/
 │   └── ingest_protocol.py        # PDF to markdown converter
 ├── src/
+│   ├── api/                      # FastAPI routers
+│   ├── cache/                    # Redis and semantic caching
 │   ├── config/                   # Configuration settings
+│   ├── db/                       # Database models and migrations
 │   ├── indexing/                 # Index building utilities
 │   ├── models/                   # LLM and vector store models
 │   └── utils/                    # Utility functions
+├── .github/workflows/            # GitHub Actions
 └── tests/
     ├── test_index.py             # Comprehensive index testing
+    ├── test_cache.py             # Cache functionality testing
     ├── debug_vector_store.py     # Debug utilities
     └── test_langchain_integration.py
 ```
@@ -197,16 +244,79 @@ mkdir -p data/raw_pdfs data/protocols logs
 3. **Start App**: Run `streamlit run app.py` (index builds automatically on first run)
 4. **Test** (Optional): Run `python tests/test_index.py` for comprehensive testing
 
+### API Server with Assistant Façade
+```bash
+# Start the FastAPI server
+python api_server.py
+
+# The server provides a unified assistant endpoint at /assistant/message
+# that handles all user interactions through intent classification
+```
+
+### Telegram Bots
+```bash
+# Option 1: Original bot with detailed workflow
+python telegram_bot.py
+# - Collects detailed patient information (gender, age, doctor selection)
+# - Uses multiple API endpoints directly
+# - More sophisticated state machine
+
+# Option 2: New simplified bot using assistant façade
+python telegram_bot_example.py
+# - Uses single /assistant/message endpoint
+# - Automatic intent classification
+# - Simplified user interaction
+```
+
 ### Advanced Testing
 ```bash
 # Run comprehensive tests
 python tests/test_index.py
+
+# Test the assistant router
+python -m pytest tests/test_assistant_router.py
 
 # Debug vector store issues
 python tests/debug_vector_store.py
 
 # Test LangChain integration
 python tests/test_langchain_integration.py
+```
+
+## 🤖 Assistant Façade Endpoint
+
+The new `/assistant/message` endpoint provides a unified interface for all user interactions:
+
+### Features
+- **Intent Classification**: Automatically classifies user messages into three categories:
+  - `clinic_info` - Questions about clinic address, hours, phone, services
+  - `doctor_schedule` - Requests for doctor availability and schedule
+  - `diagnose` - Medical symptoms and health concerns
+
+- **Smart Dispatching**: Routes requests to appropriate handlers based on intent
+- **Error Handling**: Graceful fallback to diagnosis for unclear requests
+- **Telegram Integration**: Simplified bot implementation using single endpoint
+
+### API Usage
+```bash
+# Example request
+curl -X POST "http://localhost:8000/assistant/message" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Where is your clinic located?",
+    "user_id": "user123",
+    "chat_id": "chat456"
+  }'
+
+# Example response
+{
+  "intent": "clinic_info",
+  "data": {
+    "address": "123 Medical St, Kyiv",
+    "opening_hours": "Mon-Fri 08:00-18:00",
+    "services": "General practice, Pediatrics, Emergency care"
+  }
+}
 ```
 
 ## 🐛 Troubleshooting
@@ -236,6 +346,52 @@ python tests/test_langchain_integration.py
 3. Add tests for new functionality
 4. Ensure all tests pass
 5. Submit a pull request
+
+## 🚀 CI/CD to AWS EC2
+
+This project includes a complete CI/CD pipeline that automatically deploys to AWS EC2 after each push to the main branch.
+
+### 🔐 CI Secrets
+
+The following secrets must be configured in your GitHub repository settings:
+
+| Secret Name | Description | Example |
+|-------------|-------------|---------|
+| `AWS_ACCESS_KEY_ID` | AWS access key for ECR and EC2 access | `AKIA...` |
+| `AWS_SECRET_ACCESS_KEY` | AWS secret key for ECR and EC2 access | `...` |
+| `AWS_REGION` | AWS region for ECR repository | `us-east-1` |
+| `ECR_REPOSITORY` | ECR repository name | `familydoc` |
+| `EC2_HOST` | EC2 instance public IP or domain | `54.123.45.67` |
+| `EC2_USER` | SSH user for EC2 instance | `ubuntu` |
+| `EC2_SSH_KEY` | Private SSH key for EC2 access | `-----BEGIN OPENSSH PRIVATE KEY-----...` |
+
+### 🔄 Deployment Flow
+
+1. **Push to main** → Triggers GitHub Actions workflow
+2. **Build & Push** → Docker image built and pushed to ECR
+3. **Deploy** → SSH to EC2, pull new image, restart services
+4. **Health Check** → Verify deployment with health endpoint
+5. **Smoke Tests** → Run automated tests to ensure functionality
+
+### 🛠️ Manual Deployment
+
+```bash
+# Trigger deployment manually
+make deploy-ci
+
+# View production logs
+make logs-prod
+
+# Build and push image manually
+make docker-build IMAGE=your-ecr-repo:tag
+make docker-push TAG=your-tag
+```
+
+### 📊 Monitoring
+
+- **Traefik Dashboard**: Available at `http://your-domain:8080`
+- **Application Logs**: `make logs-prod`
+- **Health Endpoint**: `http://your-domain/health`
 
 ## 📄 License
 

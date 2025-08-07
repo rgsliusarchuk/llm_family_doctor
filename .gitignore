@@ -10,3 +10,5 @@ data/faiss_index
 data/doc_map.pkl
 # data/protocols/
 logs/
+# local SQLite
+data/clinic.db

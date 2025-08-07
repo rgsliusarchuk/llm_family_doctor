@@ -1,4 +1,8 @@
 streamlit>=1.35.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+python-telegram-bot>=20.0
+aiohttp>=3.8.0
 pdfplumber
 tqdm
 sentence-transformers
@@ -9,3 +13,10 @@ python-dotenv
 langchain>=0.1.0
 langchain-openai>=0.1.0
 langsmith>=0.1.0
+sqlmodel>=0.0.24
+alembic>=1.13.1
+redis>=5.0.0            # Redis client for exact/semantic cache
+fastapi-utils>=0.2.1    # Router & CBV helpers
+guardrails-ai>=0.4.0    # I/O guardrails for LLM responses
+psutil>=5.9.0           # Explicit version to avoid build issues
+debugpy>=1.8.0          # Python debugger for VS Code/Cursor
